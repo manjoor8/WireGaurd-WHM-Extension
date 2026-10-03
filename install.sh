@@ -148,6 +148,7 @@ fi
 log_info "Creating application directories..."
 mkdir -p "$APP_DIR"
 mkdir -p "$DATA_DIR"
+mkdir -p "$DATA_DIR/sessions"
 mkdir -p "$LOG_DIR"
 mkdir -p "$APP_DIR/storage"
 
@@ -208,6 +209,7 @@ chown -R "$APP_USER:$APP_GROUP" "$APP_DIR"
 chown -R "$APP_USER:$APP_GROUP" "$DATA_DIR"
 chown -R "$APP_USER:$APP_GROUP" "$LOG_DIR"
 chmod 0750 "$DATA_DIR"
+chmod 0700 "$DATA_DIR/sessions"
 chmod 0660 "$DB_FILE"
 
 # 14. Install Systemd Service
@@ -238,6 +240,7 @@ ReadWritePaths=${DATA_DIR} ${LOG_DIR} ${APP_DIR}/storage
 Environment=APP_ENV=production
 Environment=DATABASE_PATH=${DB_FILE}
 Environment=HELPER_BIN=${HELPER_BIN}
+Environment=SESSION_DIR=${DATA_DIR}/sessions
 
 [Install]
 WantedBy=multi-user.target

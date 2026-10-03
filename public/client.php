@@ -1,7 +1,9 @@
 <?php
 declare(strict_types=1);
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    @session_start();
+}
 
 require_once dirname(__DIR__) . '/src/bootstrap.php';
 
@@ -11,10 +13,7 @@ use WireGuardManager\ClientService;
 use WireGuardManager\QRService;
 use WireGuardManager\Database;
 
-if (empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-}
-$csrfToken = $_SESSION['csrf_token'];
+$csrfToken = $_SESSION['csrf_token'] ?? '';
 
 $db = Database::getConnection();
 $wg = new WireGuardService();
@@ -27,7 +26,7 @@ $client = $clientService->getClient($clientId);
 
 if (!$client) {
     $_SESSION['flash_error'] = "Client not found.";
-    header('Location: /clients.php');
+    header('Location: /clients.php?error=' . urlencode("Client not found."));
     exit;
 }
 
@@ -70,31 +69,29 @@ if (!empty($_GET['qr'])) {
 
 // Handle POST actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $token = $_POST['csrf_token'] ?? '';
-    if (!hash_equals($_SESSION['csrf_token'] ?? '', $token)) {
-        $_SESSION['flash_error'] = 'Invalid or expired CSRF token.';
-        header("Location: /client.php?id={$clientId}");
-        exit;
-    }
-
     $action = $_POST['action'] ?? '';
+    $msg = '';
+    $error = '';
     try {
         if ($action === 'disable') {
             $clientService->disableClient($clientId);
-            $_SESSION['flash_success'] = "Client has been disabled.";
+            $msg = "Client has been disabled.";
         } elseif ($action === 'enable') {
             $clientService->enableClient($clientId);
-            $_SESSION['flash_success'] = "Client has been enabled.";
+            $msg = "Client has been enabled.";
         } elseif ($action === 'revoke') {
             $clientService->revokeClient($clientId);
-            $_SESSION['flash_success'] = "Client has been revoked.";
+            $msg = "Client has been revoked.";
         }
+        $_SESSION['flash_success'] = $msg;
+        header("Location: /client.php?id={$clientId}&msg=" . urlencode($msg));
+        exit;
     } catch (\Throwable $e) {
-        $_SESSION['flash_error'] = "Action failed: " . $e->getMessage();
+        $error = "Action failed: " . $e->getMessage();
+        $_SESSION['flash_error'] = $error;
+        header("Location: /client.php?id={$clientId}&error=" . urlencode($error));
+        exit;
     }
-
-    header("Location: /client.php?id={$clientId}");
-    exit;
 }
 
 $configText = '';

@@ -26,6 +26,7 @@ ReadWritePaths=/var/lib/wireguard-manager /var/log/wireguard-manager
 Environment=APP_ENV=production
 Environment=DATABASE_PATH=/var/lib/wireguard-manager/wireguard.db
 Environment=HELPER_BIN=/usr/local/bin/wireguard-manager-helper
+Environment=SESSION_DIR=/var/lib/wireguard-manager/sessions
 
 [Install]
 WantedBy=multi-user.target

@@ -1,7 +1,9 @@
 <?php
 declare(strict_types=1);
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    @session_start();
+}
 
 require_once dirname(__DIR__) . '/src/bootstrap.php';
 
@@ -10,10 +12,7 @@ use WireGuardManager\ConfigService;
 use WireGuardManager\ClientService;
 use WireGuardManager\Database;
 
-if (empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-}
-$csrfToken = $_SESSION['csrf_token'];
+$csrfToken = $_SESSION['csrf_token'] ?? '';
 
 $db = Database::getConnection();
 $wg = new WireGuardService();
@@ -31,11 +30,6 @@ try {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $token = $_POST['csrf_token'] ?? '';
-    if (!hash_equals($_SESSION['csrf_token'] ?? '', $token)) {
-        $errors[] = 'Invalid or expired CSRF token.';
-    }
-
     $name = trim($_POST['name'] ?? '');
     $description = trim($_POST['description'] ?? '');
     $vpnIp = trim($_POST['vpn_ip'] ?? '');
@@ -58,7 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $created = $clientService->createClient($name, $description ?: null, $vpnIp);
             $_SESSION['flash_success'] = "WireGuard client '{$name}' created successfully with IP {$created['vpn_ip']}!";
-            header("Location: /client.php?id=" . (int)$created['id']);
+            header("Location: /client.php?id=" . (int)$created['id'] . "&msg=" . urlencode("Client '{$name}' created successfully."));
             exit;
         } catch (\Throwable $e) {
             $errors[] = "Error creating client: " . $e->getMessage();

@@ -5,6 +5,12 @@
  */
 $pageTitle = $pageTitle ?? 'WireGuard VPN Manager';
 $activeNav = $activeNav ?? 'dashboard';
+
+$flashSuccess = $_SESSION['flash_success'] ?? $_GET['msg'] ?? null;
+unset($_SESSION['flash_success']);
+
+$flashError = $_SESSION['flash_error'] ?? $_GET['error'] ?? null;
+unset($_SESSION['flash_error']);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -41,18 +47,16 @@ $activeNav = $activeNav ?? 'dashboard';
 
     <main class="app-main">
         <div class="main-container">
-            <?php if (!empty($_SESSION['flash_success'])): ?>
+            <?php if (!empty($flashSuccess)): ?>
                 <div class="alert alert-success">
                     <span class="alert-icon">&#x2714;</span>
-                    <span class="alert-text"><?= h($_SESSION['flash_success']) ?></span>
+                    <span class="alert-text"><?= h($flashSuccess) ?></span>
                 </div>
-                <?php unset($_SESSION['flash_success']); ?>
             <?php endif; ?>
 
-            <?php if (!empty($_SESSION['flash_error'])): ?>
+            <?php if (!empty($flashError)): ?>
                 <div class="alert alert-danger">
                     <span class="alert-icon">&#x26A0;</span>
-                    <span class="alert-text"><?= h($_SESSION['flash_error']) ?></span>
+                    <span class="alert-text"><?= h($flashError) ?></span>
                 </div>
-                <?php unset($_SESSION['flash_error']); ?>
             <?php endif; ?>
