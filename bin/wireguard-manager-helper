@@ -10,9 +10,9 @@
 
 set -euo pipefail
 
-WG_BIN="/usr/bin/wg"
+WG_BIN="$(command -v wg 2>/dev/null || echo "/usr/bin/wg")"
 INTERFACE="wg0"
-IP_REGEX='^10\.50\.0\.(?:[2-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-4])$'
+IP_REGEX='^10\.50\.0\.([2-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-4])$'
 KEY_REGEX='^[A-Za-z0-9+/]{43}=$'
 
 # Ensure PATH is safe
@@ -150,35 +150,35 @@ case "$COMMAND" in
         ALLOWED_IP="${3:-}"
 
         if ! [[ "$PUBKEY" =~ $KEY_REGEX ]]; then
-            error_exit "Invalid WireGuard public key format"
+            error_exit "Invalid WireGuard public key format: $PUBKEY"
         fi
 
         # Validate that ALLOWED_IP matches 10.50.0.X (2-254)
         if ! echo "$ALLOWED_IP" | grep -Eq "$IP_REGEX"; then
-            error_exit "Invalid AllowedIP: must be in 10.50.0.2 - 10.50.0.254 range"
+            error_exit "Invalid AllowedIP: must be in 10.50.0.2 - 10.50.0.254 range (received: $ALLOWED_IP)"
         fi
 
         # Execute atomic peer addition to WireGuard runtime
-        if "$WG_BIN" set "$INTERFACE" peer "$PUBKEY" allowed-ips "${ALLOWED_IP}/32"; then
-            printf '{"success": true, "message": "Peer added successfully", "public_key": "%s", "allowed_ip": "%s/32"}\n' \
-                "$PUBKEY" "$ALLOWED_IP"
-        else
-            error_exit "Failed to add peer to $INTERFACE via wg set"
-        fi
+        SET_OUTPUT=$("$WG_BIN" set "$INTERFACE" peer "$PUBKEY" allowed-ips "${ALLOWED_IP}/32" 2>&1) || {
+            error_exit "Failed to add peer to $INTERFACE via wg set: $SET_OUTPUT"
+        }
+
+        printf '{"success": true, "message": "Peer added successfully", "public_key": "%s", "allowed_ip": "%s/32"}\n' \
+            "$PUBKEY" "$ALLOWED_IP"
         ;;
 
     remove-peer)
         PUBKEY="${2:-}"
 
         if ! [[ "$PUBKEY" =~ $KEY_REGEX ]]; then
-            error_exit "Invalid WireGuard public key format"
+            error_exit "Invalid WireGuard public key format: $PUBKEY"
         fi
 
-        if "$WG_BIN" set "$INTERFACE" peer "$PUBKEY" remove; then
-            printf '{"success": true, "message": "Peer removed successfully", "public_key": "%s"}\n' "$PUBKEY"
-        else
-            error_exit "Failed to remove peer from $INTERFACE via wg set"
-        fi
+        RM_OUTPUT=$("$WG_BIN" set "$INTERFACE" peer "$PUBKEY" remove 2>&1) || {
+            error_exit "Failed to remove peer from $INTERFACE via wg set: $RM_OUTPUT"
+        }
+
+        printf '{"success": true, "message": "Peer removed successfully", "public_key": "%s"}\n' "$PUBKEY"
         ;;
 
     traffic)

@@ -174,7 +174,11 @@ class WireGuardService
         $this->validateVpnIp($vpnIp);
 
         $result = $this->runHelper('add-peer', [$publicKey, $vpnIp]);
-        return !empty($result['success']);
+        if (empty($result['success'])) {
+            $err = $result['error'] ?? $this->lastError ?? 'Unknown WireGuard helper error';
+            throw new RuntimeException($err);
+        }
+        return true;
     }
 
     public function removePeer(string $publicKey): bool
@@ -182,7 +186,11 @@ class WireGuardService
         $this->validatePublicKey($publicKey);
 
         $result = $this->runHelper('remove-peer', [$publicKey]);
-        return !empty($result['success']);
+        if (empty($result['success'])) {
+            $err = $result['error'] ?? $this->lastError ?? 'Unknown WireGuard helper error';
+            throw new RuntimeException($err);
+        }
+        return true;
     }
 
     public function generateKeyPair(): array

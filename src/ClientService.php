@@ -214,10 +214,7 @@ class ClientService
         $publicKey = $keyPair['public_key'];
 
         // Add peer to WireGuard runtime
-        $added = $this->wg->addPeer($publicKey, $vpnIp);
-        if (!$added) {
-            throw new RuntimeException("Failed to add peer to WireGuard interface.");
-        }
+        $this->wg->addPeer($publicKey, $vpnIp);
 
         // Insert client record into database
         $stmt = $this->db->prepare(
