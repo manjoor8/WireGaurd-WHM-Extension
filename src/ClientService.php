@@ -26,8 +26,80 @@ class ClientService
         $this->audit = $audit ?? new AuditService($this->db);
     }
 
+    public function syncExistingPeers(): int
+    {
+        $livePeers = $this->wg->listPeers();
+        if (empty($livePeers)) {
+            return 0;
+        }
+
+        $stmt = $this->db->query("SELECT public_key, vpn_ip FROM clients");
+        $existingKeys = [];
+        $existingIps = [];
+        while ($row = $stmt->fetch()) {
+            $existingKeys[$row['public_key']] = true;
+            $existingIps[$row['vpn_ip']] = true;
+        }
+
+        $imported = 0;
+        foreach ($livePeers as $pubKey => $peer) {
+            if (isset($existingKeys[$pubKey])) {
+                continue;
+            }
+
+            // Extract VPN IP from allowed_ips (e.g. 10.50.0.2/32 or 10.50.0.2)
+            $allowedIps = $peer['allowed_ips'] ?? '';
+            $vpnIp = null;
+            if (preg_match('/(10\.50\.0\.(?:[2-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-4]))/', $allowedIps, $matches)) {
+                $candidateIp = $matches[1];
+                if (!isset($existingIps[$candidateIp])) {
+                    $vpnIp = $candidateIp;
+                }
+            }
+
+            if (!$vpnIp) {
+                try {
+                    $vpnIp = $this->getNextAvailableIp();
+                } catch (\Throwable $e) {
+                    continue;
+                }
+            }
+
+            $shortKey = substr($pubKey, 0, 8);
+            $clientNum = str_replace('10.50.0.', '', $vpnIp);
+            $clientName = "client-{$clientNum}";
+            $description = "Auto-detected on wg0 (key: {$shortKey}...)";
+
+            $insertStmt = $this->db->prepare(
+                "INSERT INTO clients (name, description, vpn_ip, public_key, state, created_at, updated_at)
+                 VALUES (:name, :desc, :ip, :key, 'active', datetime('now'), datetime('now'))"
+            );
+            $insertStmt->execute([
+                ':name' => $clientName,
+                ':desc' => $description,
+                ':ip' => $vpnIp,
+                ':key' => $pubKey,
+            ]);
+
+            $existingKeys[$pubKey] = true;
+            $existingIps[$vpnIp] = true;
+            $imported++;
+
+            $this->audit->log('SYNC_PEER', "Imported existing WireGuard peer {$pubKey} as {$clientName} ({$vpnIp})");
+        }
+
+        return $imported;
+    }
+
     public function listClients(): array
     {
+        // Automatically sync any existing peers found in WireGuard runtime
+        try {
+            $this->syncExistingPeers();
+        } catch (\Throwable $e) {
+            // Non-blocking sync error
+        }
+
         $stmt = $this->db->query(
             "SELECT id, name, description, vpn_ip, public_key, state, created_at, updated_at, revoked_at
              FROM clients

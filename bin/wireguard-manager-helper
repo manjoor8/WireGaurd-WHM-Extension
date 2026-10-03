@@ -43,7 +43,7 @@ case "$COMMAND" in
         # Get dump format:
         # Line 1: private_key public_key listen_port fwmark
         # Lines 2+: public_key preshared_key endpoint allowed_ips latest_handshake transfer_rx transfer_tx persistent_keepalive
-        DUMP=$("$WG_BIN" show "$INTERFACE" dump 2>/dev/null || true)
+        DUMP=$("$WG_BIN" show "$INTERFACE" dump 2>/dev/null | tr -d '\r' || true)
         if [[ -z "$DUMP" ]]; then
             printf '{"success": false, "interface_up": false, "error": "Could not read dump for %s"}\n' "$INTERFACE"
             exit 0
@@ -57,13 +57,21 @@ case "$COMMAND" in
             "$INTERFACE" "$PUB_KEY" "$LISTEN_PORT"
         ;;
 
+    dump)
+        if ! "$WG_BIN" show "$INTERFACE" >/dev/null 2>&1; then
+            printf '{"success": false, "error": "Interface %s is not active"}\n' "$INTERFACE"
+            exit 0
+        fi
+        "$WG_BIN" show "$INTERFACE" dump 2>/dev/null | tr -d '\r'
+        ;;
+
     list-peers)
         if ! "$WG_BIN" show "$INTERFACE" >/dev/null 2>&1; then
             printf '{"success": false, "error": "Interface %s is not active"}\n' "$INTERFACE"
             exit 0
         fi
 
-        DUMP=$("$WG_BIN" show "$INTERFACE" dump 2>/dev/null || true)
+        DUMP=$("$WG_BIN" show "$INTERFACE" dump 2>/dev/null | tr -d '\r' || true)
         PEER_COUNT=0
         printf '{"success": true, "peers": ['
 
@@ -80,13 +88,20 @@ case "$COMMAND" in
                 printf ','
             fi
 
+            p_handshake="${p_handshake:-0}"
+            [[ ! "$p_handshake" =~ ^[0-9]+$ ]] && p_handshake=0
+            p_rx="${p_rx:-0}"
+            [[ ! "$p_rx" =~ ^[0-9]+$ ]] && p_rx=0
+            p_tx="${p_tx:-0}"
+            [[ ! "$p_tx" =~ ^[0-9]+$ ]] && p_tx=0
+
             printf '{"public_key":"%s","endpoint":"%s","allowed_ips":"%s","latest_handshake":%s,"transfer_rx":%s,"transfer_tx":%s,"persistent_keepalive":"%s"}' \
                 "$p_key" \
                 "${p_endpoint:-(none)}" \
                 "$p_allowed" \
-                "${p_handshake:-0}" \
-                "${p_rx:-0}" \
-                "${p_tx:-0}" \
+                "$p_handshake" \
+                "$p_rx" \
+                "$p_tx" \
                 "${p_keepalive:-off}"
 
             PEER_COUNT=$((PEER_COUNT + 1))
@@ -101,17 +116,24 @@ case "$COMMAND" in
             error_exit "Invalid WireGuard public key format"
         fi
 
-        DUMP=$("$WG_BIN" show "$INTERFACE" dump 2>/dev/null || true)
+        DUMP=$("$WG_BIN" show "$INTERFACE" dump 2>/dev/null | tr -d '\r' || true)
         FOUND=0
         while IFS=$'\t' read -r p_key p_psk p_endpoint p_allowed p_handshake p_rx p_tx p_keepalive; do
             if [[ "$p_key" == "$PUBKEY" ]]; then
+                p_handshake="${p_handshake:-0}"
+                [[ ! "$p_handshake" =~ ^[0-9]+$ ]] && p_handshake=0
+                p_rx="${p_rx:-0}"
+                [[ ! "$p_rx" =~ ^[0-9]+$ ]] && p_rx=0
+                p_tx="${p_tx:-0}"
+                [[ ! "$p_tx" =~ ^[0-9]+$ ]] && p_tx=0
+
                 printf '{"success": true, "peer": {"public_key":"%s","endpoint":"%s","allowed_ips":"%s","latest_handshake":%s,"transfer_rx":%s,"transfer_tx":%s,"persistent_keepalive":"%s"}}\n' \
                     "$p_key" \
                     "${p_endpoint:-(none)}" \
                     "$p_allowed" \
-                    "${p_handshake:-0}" \
-                    "${p_rx:-0}" \
-                    "${p_tx:-0}" \
+                    "$p_handshake" \
+                    "$p_rx" \
+                    "$p_tx" \
                     "${p_keepalive:-off}"
                 FOUND=1
                 break
@@ -165,12 +187,16 @@ case "$COMMAND" in
             error_exit "Invalid WireGuard public key format"
         fi
 
-        DUMP=$("$WG_BIN" show "$INTERFACE" dump 2>/dev/null || true)
+        DUMP=$("$WG_BIN" show "$INTERFACE" dump 2>/dev/null | tr -d '\r' || true)
         FOUND=0
         while IFS=$'\t' read -r p_key p_psk p_endpoint p_allowed p_handshake p_rx p_tx p_keepalive; do
             if [[ "$p_key" == "$PUBKEY" ]]; then
+                p_rx="${p_rx:-0}"
+                [[ ! "$p_rx" =~ ^[0-9]+$ ]] && p_rx=0
+                p_tx="${p_tx:-0}"
+                [[ ! "$p_tx" =~ ^[0-9]+$ ]] && p_tx=0
                 printf '{"success": true, "transfer_rx": %s, "transfer_tx": %s}\n' \
-                    "${p_rx:-0}" "${p_tx:-0}"
+                    "$p_rx" "$p_tx"
                 FOUND=1
                 break
             fi
@@ -187,11 +213,13 @@ case "$COMMAND" in
             error_exit "Invalid WireGuard public key format"
         fi
 
-        DUMP=$("$WG_BIN" show "$INTERFACE" dump 2>/dev/null || true)
+        DUMP=$("$WG_BIN" show "$INTERFACE" dump 2>/dev/null | tr -d '\r' || true)
         FOUND=0
         while IFS=$'\t' read -r p_key p_psk p_endpoint p_allowed p_handshake p_rx p_tx p_keepalive; do
             if [[ "$p_key" == "$PUBKEY" ]]; then
-                printf '{"success": true, "latest_handshake": %s}\n' "${p_handshake:-0}"
+                p_handshake="${p_handshake:-0}"
+                [[ ! "$p_handshake" =~ ^[0-9]+$ ]] && p_handshake=0
+                printf '{"success": true, "latest_handshake": %s}\n' "$p_handshake"
                 FOUND=1
                 break
             fi
@@ -222,6 +250,6 @@ case "$COMMAND" in
         ;;
 
     *)
-        error_exit "Unknown or unsupported command. Allowed: status, list-peers, peer-info, add-peer, remove-peer, traffic, handshake, genkey, pubkey"
+        error_exit "Unknown or unsupported command. Allowed: status, dump, list-peers, peer-info, add-peer, remove-peer, traffic, handshake, genkey, pubkey"
         ;;
 esac

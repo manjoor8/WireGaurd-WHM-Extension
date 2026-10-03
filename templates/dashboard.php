@@ -17,6 +17,12 @@
     </div>
 </div>
 
+<?php if (!empty($status['error'])): ?>
+    <div class="alert alert-danger mb-4">
+        <strong>WireGuard Runtime Notice:</strong> <?= h($status['error']) ?>
+    </div>
+<?php endif; ?>
+
 <div class="stats-grid">
     <div class="stat-card">
         <div class="stat-header">

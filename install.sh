@@ -289,6 +289,23 @@ else
     log_warn "Health check returned HTTP code: ${HTTP_CODE}. Service may still be initializing."
 fi
 
+# 19. Synchronize Pre-Existing WireGuard Peers
+log_info "Synchronizing existing WireGuard peers from ${REQUIRED_IFACE}..."
+"$CHOSEN_PHP" -r '
+    require_once "'"${APP_DIR}"'/src/bootstrap.php";
+    \WireGuardManager\Database::setPath("'"${DB_FILE}"'");
+    $db = \WireGuardManager\Database::getConnection();
+    $wg = new \WireGuardManager\WireGuardService("'"${HELPER_BIN}"'");
+    $config = new \WireGuardManager\ConfigService($db);
+    $cs = new \WireGuardManager\ClientService($db, $wg, $config);
+    $count = $cs->syncExistingPeers();
+    if ($count > 0) {
+        echo "Successfully imported $count existing WireGuard peer(s).\n";
+    }
+' 2>/dev/null || true
+chown "$APP_USER:$APP_GROUP" "$DB_FILE" 2>/dev/null || true
+chmod 0660 "$DB_FILE" 2>/dev/null || true
+
 echo "=================================================================="
 echo -e "${COLOR_GREEN} WireGuard VPN Manager successfully installed!${COLOR_RESET}"
 echo "=================================================================="
