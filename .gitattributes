@@ -1,0 +1,5 @@
+# Ensure shell scripts have LF line endings
+*.sh text eol=lf
+bin/* text eol=lf
+systemd/* text eol=lf
+database/* text eol=lf

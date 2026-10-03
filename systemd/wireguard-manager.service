@@ -1,0 +1,31 @@
+[Unit]
+Description=WireGuard VPN Management Web Application
+Documentation=https://github.com/manjoor8/WireGaurd-WHM-Extension
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=wireguard-manager
+Group=wireguard-manager
+WorkingDirectory=/opt/wireguard-manager
+ExecStart=/usr/bin/php -S 10.50.0.1:5050 -t /opt/wireguard-manager/public /opt/wireguard-manager/public/router.php
+Restart=on-failure
+RestartSec=3s
+
+# Security Sandbox
+# Note: wireguard-manager uses sudo to execute the dedicated helper /usr/local/bin/wireguard-manager-helper.
+# NoNewPrivileges must be false so sudo can transition to root for the helper binary.
+NoNewPrivileges=false
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/wireguard-manager /var/log/wireguard-manager
+
+# Environment
+Environment=APP_ENV=production
+Environment=DATABASE_PATH=/var/lib/wireguard-manager/wireguard.db
+Environment=HELPER_BIN=/usr/local/bin/wireguard-manager-helper
+
+[Install]
+WantedBy=multi-user.target

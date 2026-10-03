@@ -1,0 +1,227 @@
+#!/bin/bash
+# ==============================================================================
+# WireGuard VPN Manager Privileged Helper
+# Path: /usr/local/bin/wireguard-manager-helper
+# Owned by: root:wireguard-manager (0750)
+#
+# Dedicated privileged helper for strictly validated WireGuard operations.
+# NO arbitrary commands or shells are permitted.
+# ==============================================================================
+
+set -euo pipefail
+
+WG_BIN="/usr/bin/wg"
+INTERFACE="wg0"
+IP_REGEX='^10\.50\.0\.(?:[2-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-4])$'
+KEY_REGEX='^[A-Za-z0-9+/]{43}=$'
+
+# Ensure PATH is safe
+export PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+
+# Function to return error in JSON format
+error_exit() {
+    local msg="$1"
+    printf '{"success": false, "error": "%s"}\n' "$(echo "$msg" | sed 's/"/\\"/g')" >&2
+    exit 1
+}
+
+# Function to check if wg binary exists
+if [[ ! -x "$WG_BIN" ]]; then
+    error_exit "WireGuard utility not found or not executable at $WG_BIN"
+fi
+
+COMMAND="${1:-}"
+
+case "$COMMAND" in
+    status)
+        # Check if interface exists in wg
+        if ! "$WG_BIN" show "$INTERFACE" >/dev/null 2>&1; then
+            printf '{"success": false, "interface_up": false, "interface": "%s", "error": "Interface %s is not active"}\n' "$INTERFACE" "$INTERFACE"
+            exit 0
+        fi
+
+        # Get dump format:
+        # Line 1: private_key public_key listen_port fwmark
+        # Lines 2+: public_key preshared_key endpoint allowed_ips latest_handshake transfer_rx transfer_tx persistent_keepalive
+        DUMP=$("$WG_BIN" show "$INTERFACE" dump 2>/dev/null || true)
+        if [[ -z "$DUMP" ]]; then
+            printf '{"success": false, "interface_up": false, "error": "Could not read dump for %s"}\n' "$INTERFACE"
+            exit 0
+        fi
+
+        FIRST_LINE=$(echo "$DUMP" | head -n 1)
+        PUB_KEY=$(echo "$FIRST_LINE" | awk '{print $2}')
+        LISTEN_PORT=$(echo "$FIRST_LINE" | awk '{print $3}')
+
+        printf '{"success": true, "interface_up": true, "interface": "%s", "public_key": "%s", "listen_port": "%s"}\n' \
+            "$INTERFACE" "$PUB_KEY" "$LISTEN_PORT"
+        ;;
+
+    list-peers)
+        if ! "$WG_BIN" show "$INTERFACE" >/dev/null 2>&1; then
+            printf '{"success": false, "error": "Interface %s is not active"}\n' "$INTERFACE"
+            exit 0
+        fi
+
+        DUMP=$("$WG_BIN" show "$INTERFACE" dump 2>/dev/null || true)
+        PEER_COUNT=0
+        printf '{"success": true, "peers": ['
+
+        # Read peers (skipping first line which is interface line)
+        FIRST=1
+        while IFS=$'\t' read -r p_key p_psk p_endpoint p_allowed p_handshake p_rx p_tx p_keepalive; do
+            if [[ $FIRST -eq 1 ]]; then
+                FIRST=0
+                continue
+            fi
+            [[ -z "$p_key" ]] && continue
+
+            if [[ $PEER_COUNT -gt 0 ]]; then
+                printf ','
+            fi
+
+            printf '{"public_key":"%s","endpoint":"%s","allowed_ips":"%s","latest_handshake":%s,"transfer_rx":%s,"transfer_tx":%s,"persistent_keepalive":"%s"}' \
+                "$p_key" \
+                "${p_endpoint:-(none)}" \
+                "$p_allowed" \
+                "${p_handshake:-0}" \
+                "${p_rx:-0}" \
+                "${p_tx:-0}" \
+                "${p_keepalive:-off}"
+
+            PEER_COUNT=$((PEER_COUNT + 1))
+        done <<< "$DUMP"
+
+        printf '], "total": %d}\n' "$PEER_COUNT"
+        ;;
+
+    peer-info)
+        PUBKEY="${2:-}"
+        if ! [[ "$PUBKEY" =~ $KEY_REGEX ]]; then
+            error_exit "Invalid WireGuard public key format"
+        fi
+
+        DUMP=$("$WG_BIN" show "$INTERFACE" dump 2>/dev/null || true)
+        FOUND=0
+        while IFS=$'\t' read -r p_key p_psk p_endpoint p_allowed p_handshake p_rx p_tx p_keepalive; do
+            if [[ "$p_key" == "$PUBKEY" ]]; then
+                printf '{"success": true, "peer": {"public_key":"%s","endpoint":"%s","allowed_ips":"%s","latest_handshake":%s,"transfer_rx":%s,"transfer_tx":%s,"persistent_keepalive":"%s"}}\n' \
+                    "$p_key" \
+                    "${p_endpoint:-(none)}" \
+                    "$p_allowed" \
+                    "${p_handshake:-0}" \
+                    "${p_rx:-0}" \
+                    "${p_tx:-0}" \
+                    "${p_keepalive:-off}"
+                FOUND=1
+                break
+            fi
+        done <<< "$DUMP"
+
+        if [[ $FOUND -eq 0 ]]; then
+            printf '{"success": false, "error": "Peer not found in active interface"}\n'
+        fi
+        ;;
+
+    add-peer)
+        PUBKEY="${2:-}"
+        ALLOWED_IP="${3:-}"
+
+        if ! [[ "$PUBKEY" =~ $KEY_REGEX ]]; then
+            error_exit "Invalid WireGuard public key format"
+        fi
+
+        # Validate that ALLOWED_IP matches 10.50.0.X (2-254)
+        if ! echo "$ALLOWED_IP" | grep -Eq "$IP_REGEX"; then
+            error_exit "Invalid AllowedIP: must be in 10.50.0.2 - 10.50.0.254 range"
+        fi
+
+        # Execute atomic peer addition to WireGuard runtime
+        if "$WG_BIN" set "$INTERFACE" peer "$PUBKEY" allowed-ips "${ALLOWED_IP}/32"; then
+            printf '{"success": true, "message": "Peer added successfully", "public_key": "%s", "allowed_ip": "%s/32"}\n' \
+                "$PUBKEY" "$ALLOWED_IP"
+        else
+            error_exit "Failed to add peer to $INTERFACE via wg set"
+        fi
+        ;;
+
+    remove-peer)
+        PUBKEY="${2:-}"
+
+        if ! [[ "$PUBKEY" =~ $KEY_REGEX ]]; then
+            error_exit "Invalid WireGuard public key format"
+        fi
+
+        if "$WG_BIN" set "$INTERFACE" peer "$PUBKEY" remove; then
+            printf '{"success": true, "message": "Peer removed successfully", "public_key": "%s"}\n' "$PUBKEY"
+        else
+            error_exit "Failed to remove peer from $INTERFACE via wg set"
+        fi
+        ;;
+
+    traffic)
+        PUBKEY="${2:-}"
+        if ! [[ "$PUBKEY" =~ $KEY_REGEX ]]; then
+            error_exit "Invalid WireGuard public key format"
+        fi
+
+        DUMP=$("$WG_BIN" show "$INTERFACE" dump 2>/dev/null || true)
+        FOUND=0
+        while IFS=$'\t' read -r p_key p_psk p_endpoint p_allowed p_handshake p_rx p_tx p_keepalive; do
+            if [[ "$p_key" == "$PUBKEY" ]]; then
+                printf '{"success": true, "transfer_rx": %s, "transfer_tx": %s}\n' \
+                    "${p_rx:-0}" "${p_tx:-0}"
+                FOUND=1
+                break
+            fi
+        done <<< "$DUMP"
+
+        if [[ $FOUND -eq 0 ]]; then
+            printf '{"success": false, "error": "Peer not found"}\n'
+        fi
+        ;;
+
+    handshake)
+        PUBKEY="${2:-}"
+        if ! [[ "$PUBKEY" =~ $KEY_REGEX ]]; then
+            error_exit "Invalid WireGuard public key format"
+        fi
+
+        DUMP=$("$WG_BIN" show "$INTERFACE" dump 2>/dev/null || true)
+        FOUND=0
+        while IFS=$'\t' read -r p_key p_psk p_endpoint p_allowed p_handshake p_rx p_tx p_keepalive; do
+            if [[ "$p_key" == "$PUBKEY" ]]; then
+                printf '{"success": true, "latest_handshake": %s}\n' "${p_handshake:-0}"
+                FOUND=1
+                break
+            fi
+        done <<< "$DUMP"
+
+        if [[ $FOUND -eq 0 ]]; then
+            printf '{"success": false, "error": "Peer not found"}\n'
+        fi
+        ;;
+
+    genkey)
+        KEY=$("$WG_BIN" genkey)
+        PUBKEY=$(echo "$KEY" | "$WG_BIN" pubkey)
+        printf '{"success": true, "private_key": "%s", "public_key": "%s"}\n' "$KEY" "$PUBKEY"
+        ;;
+
+    pubkey)
+        # Accepts private key via argument or stdin
+        PRIVKEY="${2:-}"
+        if [[ -z "$PRIVKEY" ]]; then
+            read -r PRIVKEY || true
+        fi
+        if ! [[ "$PRIVKEY" =~ $KEY_REGEX ]]; then
+            error_exit "Invalid private key format"
+        fi
+        PUBKEY=$(echo "$PRIVKEY" | "$WG_BIN" pubkey)
+        printf '{"success": true, "public_key": "%s"}\n' "$PUBKEY"
+        ;;
+
+    *)
+        error_exit "Unknown or unsupported command. Allowed: status, list-peers, peer-info, add-peer, remove-peer, traffic, handshake, genkey, pubkey"
+        ;;
+esac

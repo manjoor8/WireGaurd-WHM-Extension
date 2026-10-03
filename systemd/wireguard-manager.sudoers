@@ -1,0 +1,4 @@
+# /etc/sudoers.d/wireguard-manager
+# Allow the wireguard-manager web service user to execute only the dedicated helper with root privileges without password.
+wireguard-manager ALL=(root) NOPASSWD: /usr/local/bin/wireguard-manager-helper
+wireguard-manager ALL=(root) NOPASSWD: /usr/local/bin/wireguard-manager-helper *
