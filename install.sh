@@ -123,9 +123,14 @@ elif command -v netstat >/dev/null 2>&1; then
 fi
 log_ok "Port ${BIND_PORT} is free."
 
-# 8. Check qrencode
+# 8. Check and install qrencode
 if ! command -v qrencode >/dev/null 2>&1; then
-    log_warn "'qrencode' binary not found. QR code generation may be unavailable until 'dnf install qrencode' is run."
+    log_info "Attempting to install 'qrencode' for mobile barcode generation..."
+    dnf install -y qrencode >/dev/null 2>&1 || true
+fi
+
+if ! command -v qrencode >/dev/null 2>&1; then
+    log_warn "'qrencode' binary not found. Install manually via 'dnf install qrencode' to generate QR barcodes."
 else
     log_ok "qrencode found: $(command -v qrencode)"
 fi

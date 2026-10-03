@@ -109,16 +109,24 @@
             </div>
         </div>
 
-        <?php if ($client['state'] !== 'revoked' && !empty($qrDataUri)): ?>
+        <?php if ($client['state'] !== 'revoked'): ?>
             <div class="card">
                 <div class="card-header">
                     <h2 class="card-title">WireGuard Mobile QR Code</h2>
                 </div>
                 <div class="card-body text-center">
-                    <div class="qr-container">
-                        <img src="<?= $qrDataUri ?>" alt="WireGuard QR Code" class="qr-img">
-                    </div>
-                    <p class="text-muted text-xs mt-3">Scan this code using the WireGuard app on iOS or Android.</p>
+                    <?php if (!empty($qrDataUri)): ?>
+                        <div class="qr-container">
+                            <img src="<?= $qrDataUri ?>" alt="WireGuard QR Code" class="qr-img">
+                        </div>
+                        <p class="text-muted text-xs mt-3">Scan this code using the WireGuard app on iOS or Android.</p>
+                    <?php else: ?>
+                        <div class="alert alert-warning" style="text-align: left;">
+                            <strong>Barcode Generator Missing:</strong><br>
+                            To display the QR barcode, install <code>qrencode</code> on your server:<br>
+                            <code class="mt-1" style="display:inline-block; padding: 4px 8px; background: #000; border-radius: 4px;">dnf install -y qrencode</code>
+                        </div>
+                    <?php endif; ?>
                 </div>
             </div>
         <?php endif; ?>
