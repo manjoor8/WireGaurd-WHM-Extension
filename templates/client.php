@@ -111,15 +111,28 @@
 
         <?php if ($client['state'] !== 'revoked'): ?>
             <div class="card">
-                <div class="card-header">
+                <div class="card-header flex-between">
                     <h2 class="card-title">WireGuard Mobile QR Code</h2>
+                    <?php if (empty($client['private_key'])): ?>
+                        <span class="badge badge-warning">Imported Peer</span>
+                    <?php endif; ?>
                 </div>
                 <div class="card-body text-center">
-                    <?php if (!empty($qrDataUri)): ?>
+                    <?php if (empty($client['private_key'])): ?>
+                        <div class="alert alert-info" style="text-align: left;">
+                            <strong>Imported Client Notice:</strong><br>
+                            This client was auto-imported from the WireGuard interface without a private key (private keys reside on client devices).<br><br>
+                            To scan and connect a new mobile phone or device with this client's IP (<code><?= h($client['vpn_ip']) ?></code>), generate a fresh key pair:
+                            <form method="POST" action="/client.php?id=<?= (int)$client['id'] ?>" class="mt-3">
+                                <input type="hidden" name="action" value="rekey">
+                                <button type="submit" class="btn btn-primary btn-sm">&#x21bb; Generate New Key Pair &amp; QR Code</button>
+                            </form>
+                        </div>
+                    <?php elseif (!empty($qrDataUri)): ?>
                         <div class="qr-container">
                             <img src="<?= $qrDataUri ?>" alt="WireGuard QR Code" class="qr-img">
                         </div>
-                        <p class="text-muted text-xs mt-3">Scan this code using the WireGuard app on iOS or Android.</p>
+                        <p class="text-muted text-xs mt-3">Scan this code using the official WireGuard app on iOS or Android.</p>
                     <?php else: ?>
                         <div class="alert alert-warning" style="text-align: left;">
                             <strong>Barcode Generator Missing:</strong><br>

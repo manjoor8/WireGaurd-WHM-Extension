@@ -209,6 +209,19 @@ else
     log_ok "Existing database preserved."
 fi
 
+# Auto-detect Server Public IP for client endpoints
+log_info "Detecting server public IP for WireGuard client profiles..."
+DETECTED_PUBLIC_IP=$(curl -s -4 --connect-timeout 2 https://api.ipify.org 2>/dev/null || curl -s -4 --connect-timeout 2 https://icanhazip.com 2>/dev/null || ip route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}' || true)
+
+if [[ -n "$DETECTED_PUBLIC_IP" ]]; then
+    log_ok "Detected Public IP: ${DETECTED_PUBLIC_IP}"
+    "$CHOSEN_PHP" -r '
+        $pdo = new PDO("sqlite:'"${DB_FILE}"'");
+        $stmt = $pdo->prepare("UPDATE settings SET value = :ip WHERE key = '\''vpn_endpoint'\'' AND (value = '\'''\'' OR value LIKE '\''%SERVER_PUBLIC_IP%'\'')");
+        $stmt->execute(['"':ip'"' => "'"${DETECTED_PUBLIC_IP}"'"]);
+    ' 2>/dev/null || true
+fi
+
 # Set correct permissions
 chown -R "$APP_USER:$APP_GROUP" "$APP_DIR"
 chown -R "$APP_USER:$APP_GROUP" "$DATA_DIR"

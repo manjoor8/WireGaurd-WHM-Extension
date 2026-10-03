@@ -324,40 +324,83 @@ class ClientService
         return true;
     }
 
+    public function canGenerateQr(array $client): bool
+    {
+        if (empty($client['private_key']) || !preg_match('/^[A-Za-z0-9+\/]{43}=$/', $client['private_key'])) {
+            return false;
+        }
+
+        $serverStatus = $this->wg->getStatus();
+        $serverPubKey = $serverStatus['public_key'] ?? '';
+        if (empty($serverPubKey) || !preg_match('/^[A-Za-z0-9+\/]{43}=$/', $serverPubKey)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    public function rekeyClient(int $id): array
+    {
+        $client = $this->getClient($id);
+        if (!$client) {
+            throw new InvalidArgumentException("Client not found.");
+        }
+
+        if ($client['state'] === 'revoked') {
+            throw new RuntimeException("Cannot re-key a revoked client.");
+        }
+
+        // Generate a new Curve25519 key pair
+        $keyPair = $this->wg->generateKeyPair();
+        $newPrivateKey = $keyPair['private_key'];
+        $newPublicKey = $keyPair['public_key'];
+
+        // If client was active, update peer on wg0 runtime
+        if ($client['state'] === 'active') {
+            try {
+                $this->wg->removePeer($client['public_key']);
+            } catch (\Throwable $e) {}
+            $this->wg->addPeer($newPublicKey, $client['vpn_ip']);
+        }
+
+        // Update database
+        $stmt = $this->db->prepare(
+            "UPDATE clients SET public_key = :pub, private_key = :priv, updated_at = datetime('now') WHERE id = :id"
+        );
+        $stmt->execute([
+            ':pub' => $newPublicKey,
+            ':priv' => $newPrivateKey,
+            ':id' => $id,
+        ]);
+
+        $this->audit->log('REKEY_CLIENT', "Re-keyed client '{$client['name']}' (id: {$id}) with new Curve25519 key pair");
+
+        $updated = $this->getClient($id);
+        $updated['private_key'] = $newPrivateKey;
+        return $updated;
+    }
+
     public function generateClientConfig(array $client): string
     {
         $serverStatus = $this->wg->getStatus();
         $serverPubKey = $serverStatus['public_key'] ?? '';
-        $listenPort = $this->config->get('listen_port', '51820');
-        $endpoint = $this->config->get('vpn_endpoint', '');
-
-        if (empty($endpoint)) {
-            // Fall back to server management IP or prompt placeholder
-            $endpoint = "SERVER_PUBLIC_IP:{$listenPort}";
-        } elseif (!str_contains($endpoint, ':')) {
-            $endpoint .= ":{$listenPort}";
-        }
-
+        $endpoint = $this->config->getEndpoint();
         $dns = $this->config->get('dns', '1.1.1.1');
         $allowedIps = $this->config->get('allowed_ips', '0.0.0.0/0');
         $keepalive = $this->config->get('persistent_keepalive', '25');
 
-        $privateKey = !empty($client['private_key']) ? $client['private_key'] : '<CLIENT_PRIVATE_KEY>';
+        $privateKey = !empty($client['private_key']) ? $client['private_key'] : '# REPLACE_WITH_CLIENT_PRIVATE_KEY';
         $clientIp = $client['vpn_ip'];
 
-        $config = <<<CONF
-[Interface]
-PrivateKey = {$privateKey}
-Address = {$clientIp}/32
-DNS = {$dns}
-
-[Peer]
-PublicKey = {$serverPubKey}
-Endpoint = {$endpoint}
-AllowedIPs = {$allowedIps}
-PersistentKeepalive = {$keepalive}
-
-CONF;
+        $config = "[Interface]\n"
+                . "PrivateKey = {$privateKey}\n"
+                . "Address = {$clientIp}/32\n"
+                . "DNS = {$dns}\n\n"
+                . "[Peer]\n"
+                . "PublicKey = {$serverPubKey}\n"
+                . "AllowedIPs = {$allowedIps}\n"
+                . "Endpoint = {$endpoint}\n"
+                . "PersistentKeepalive = {$keepalive}\n";
 
         return $config;
     }

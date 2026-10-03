@@ -64,6 +64,59 @@ class ConfigService
         return self::DEFAULTS[$key] ?? $default;
     }
 
+    public function getEndpoint(): string
+    {
+        $endpoint = $this->get('vpn_endpoint', '');
+        $listenPort = $this->get('listen_port', '51820');
+
+        if (!empty($endpoint) && !str_contains($endpoint, 'SERVER_PUBLIC_IP')) {
+            return str_contains($endpoint, ':') ? $endpoint : "{$endpoint}:{$listenPort}";
+        }
+
+        // Try detecting server public IP
+        $detectedIp = $this->detectServerPublicIp();
+        if (!empty($detectedIp)) {
+            $this->set('vpn_endpoint', $detectedIp);
+            return "{$detectedIp}:{$listenPort}";
+        }
+
+        return "10.50.0.1:{$listenPort}";
+    }
+
+    public function detectServerPublicIp(): ?string
+    {
+        // 1. Try ip route get 1.1.1.1
+        $route = @shell_exec("ip route get 1.1.1.1 2>/dev/null");
+        if ($route && preg_match('/src\s+([0-9.]+)/', $route, $matches)) {
+            $ip = trim($matches[1]);
+            if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+                return $ip;
+            }
+        }
+
+        // 2. Try external echo services
+        $services = [
+            'https://api.ipify.org',
+            'https://icanhazip.com',
+            'https://ifconfig.me',
+        ];
+
+        foreach ($services as $url) {
+            $ctx = stream_context_create([
+                'http' => ['timeout' => 2, 'header' => "User-Agent: curl/7.0\r\n"]
+            ]);
+            $ip = @file_get_contents($url, false, $ctx);
+            if ($ip !== false) {
+                $ip = trim($ip);
+                if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+                    return $ip;
+                }
+            }
+        }
+
+        return null;
+    }
+
     public function set(string $key, string $value): void
     {
         if (isset(self::LOCKED_SETTINGS[$key])) {

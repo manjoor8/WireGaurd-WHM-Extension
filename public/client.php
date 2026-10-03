@@ -56,13 +56,21 @@ if (!empty($_GET['qr'])) {
         exit;
     }
 
+    if (empty($client['private_key'])) {
+        echo json_encode([
+            'success' => false,
+            'error' => 'This client was imported from wg0 without a private key. Click "View" and generate a new key pair to enable mobile barcode scanning.'
+        ]);
+        exit;
+    }
+
     $configText = $clientService->generateClientConfig($client);
     $qrDataUri = $qrService->generateDataUri($configText);
 
     if (!empty($qrDataUri)) {
         echo json_encode(['success' => true, 'qr' => $qrDataUri]);
     } else {
-        echo json_encode(['success' => false, 'error' => 'QR generation failed. Ensure qrencode is installed.']);
+        echo json_encode(['success' => false, 'error' => 'QR generation failed. Ensure qrencode is installed on the server (dnf install qrencode).']);
     }
     exit;
 }
@@ -82,6 +90,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($action === 'revoke') {
             $clientService->revokeClient($clientId);
             $msg = "Client has been revoked.";
+        } elseif ($action === 'rekey') {
+            $clientService->rekeyClient($clientId);
+            $msg = "New Curve25519 key pair generated. Mobile QR barcode is now active!";
         }
         $_SESSION['flash_success'] = $msg;
         header("Location: /client.php?id={$clientId}&msg=" . urlencode($msg));
