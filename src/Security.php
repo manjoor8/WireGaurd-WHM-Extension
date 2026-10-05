@@ -89,7 +89,7 @@ class Security
 
         header('X-Frame-Options: DENY');
         header('X-Content-Type-Options: nosniff');
-        header('Referrer-Policy: no-referrer');
+        header('Referrer-Policy: strict-origin-when-cross-origin');
         header('Cross-Origin-Opener-Policy: same-origin');
         header('Cross-Origin-Resource-Policy: same-origin');
         header('Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()');
@@ -124,20 +124,28 @@ class Security
             return;
         }
 
+        $currentHost = strtolower(trim((string)($_SERVER['HTTP_HOST'] ?? '')));
+
+        // 1. Origin header verification (when present and not opaque 'null')
         $origin = $_SERVER['HTTP_ORIGIN'] ?? null;
-        if ($origin !== null) {
+        if ($origin !== null && $origin !== '' && $origin !== 'null') {
             $normalizedOrigin = strtolower(rtrim($origin, '/'));
             $parsedHost = parse_url($normalizedOrigin, PHP_URL_HOST);
             $parsedPort = parse_url($normalizedOrigin, PHP_URL_PORT);
-            $originHost = $parsedHost . ($parsedPort ? ':' . $parsedPort : '');
+            $originHost = ($parsedHost ?: $normalizedOrigin) . ($parsedPort ? ':' . $parsedPort : '');
 
-            if (!in_array($normalizedOrigin, self::allowedOrigins(), true)
-                && !in_array($originHost, self::allowedHosts(), true)) {
-                self::reject('Cross-origin request blocked.');
+            $isAllowed = in_array($normalizedOrigin, self::allowedOrigins(), true)
+                || in_array($originHost, self::allowedHosts(), true)
+                || ($parsedHost !== null && in_array($parsedHost, self::allowedHosts(), true))
+                || ($currentHost !== '' && ($originHost === $currentHost || $parsedHost === $currentHost));
+
+            if (!$isAllowed) {
+                self::reject('Cross-origin request blocked: origin ' . htmlspecialchars($origin, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . ' is not permitted.');
             }
         }
 
-        if ($origin === null && !empty($_SERVER['HTTP_REFERER'])) {
+        // 2. Referer header verification (fallback when Origin is not provided)
+        if (($origin === null || $origin === 'null' || $origin === '') && !empty($_SERVER['HTTP_REFERER'])) {
             $ref = parse_url((string)$_SERVER['HTTP_REFERER']);
             $refScheme = strtolower($ref['scheme'] ?? '');
             $refHost = strtolower($ref['host'] ?? '');
@@ -145,12 +153,17 @@ class Security
             $refOrigin = $refScheme . '://' . $refHost . $refPort;
             $refHostOnly = $refHost . $refPort;
 
-            if (!in_array($refOrigin, self::allowedOrigins(), true)
-                && !in_array($refHostOnly, self::allowedHosts(), true)) {
-                self::reject('Cross-origin request blocked.');
+            $isAllowed = in_array($refOrigin, self::allowedOrigins(), true)
+                || in_array($refHostOnly, self::allowedHosts(), true)
+                || in_array($refHost, self::allowedHosts(), true)
+                || ($currentHost !== '' && ($refHostOnly === $currentHost || $refHost === $currentHost));
+
+            if (!$isAllowed) {
+                self::reject('Cross-origin request blocked: referer is not permitted.');
             }
         }
 
+        // 3. Cryptographic CSRF Token Verification (Primary Defense)
         $sent = $_POST['csrf_token'] ?? '';
         $expected = $_SESSION['csrf_token'] ?? '';
         if (!is_string($sent) || !is_string($expected) || $expected === '' || !hash_equals($expected, $sent)) {
