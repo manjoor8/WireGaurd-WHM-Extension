@@ -183,7 +183,19 @@ sudo /usr/local/bin/wireguard-manager-passwd --random
 
 ---
 
-## 6. Privileged Helper Architecture
+## 6. Configuration Backup & Restore (Export / Import)
+
+You can export and import the entire system configuration directly from the web interface at **Settings -> Backup & Restore Configuration**:
+
+- **Export Configuration**: Downloads a JSON file containing all client profiles (public/private keys, allocated VPN IPs, active/disabled states), profile defaults, and the hashed administrator password.
+- **Import Configuration**: Uploads a previously exported JSON backup.
+  - Automatically restores all client records and settings in a single transaction.
+  - Automatically restores the administrator credentials.
+  - Automatically synchronizes the active WireGuard interface (`wg0`), registering active peers immediately without requiring service restarts.
+
+---
+
+## 7. Privileged Helper Architecture
 
 The web process runs under the unprivileged `wireguard-manager` user. To perform WireGuard peer configuration without granting the web process root access, a controlled helper script is used:
 
@@ -246,6 +258,7 @@ The web process runs under the unprivileged `wireguard-manager` user. To perform
 │   ├── WireGuardService.php      # Helper bridge & parser
 │   ├── ClientService.php         # Client lifecycle & IP allocator
 │   ├── ConfigService.php         # Settings management
+│   ├── BackupService.php         # Full configuration export and import
 │   ├── QRService.php             # In-memory qrencode Data URI generator
 │   └── AuditService.php          # Security audit trail
 └── templates/                    # HTML UI Templates

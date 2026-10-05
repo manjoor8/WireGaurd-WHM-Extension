@@ -135,3 +135,64 @@ $passwordErrors = $passwordErrors ?? [];
         </form>
     </div>
 </div>
+
+<!-- Export & Import Full Configuration Card -->
+<div class="card max-w-2xl mt-4">
+    <div class="card-header">
+        <h2 class="card-title">Backup &amp; Restore Configuration</h2>
+    </div>
+    <div class="card-body">
+        <p class="text-secondary mb-4">
+            Export or import the entire WireGuard VPN Manager configuration, including all client profiles (with public/private keys and allocated VPN IPs), network profile defaults, and the encrypted administrator password.
+        </p>
+
+        <!-- Export Section -->
+        <div class="settings-backup-section mb-4 pb-4" style="border-bottom: 1px solid var(--border-color);">
+            <h3 class="section-title mb-2">Export Configuration Backup</h3>
+            <p class="form-help mb-3">Download a portable JSON backup file. Can be used for disaster recovery or migrating to another server.</p>
+            <form method="POST" action="/settings.php">
+                <?= csrf_field() ?>
+                <input type="hidden" name="action" value="export">
+                <button type="submit" class="btn btn-outline">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px; vertical-align: -2px;">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    Export Configuration (.json)
+                </button>
+            </form>
+        </div>
+
+        <!-- Import Section -->
+        <div class="settings-backup-section">
+            <h3 class="section-title mb-2">Import Configuration Backup</h3>
+            <p class="form-help mb-3">
+                Upload a JSON backup file. Clients, settings, and administrator credentials will be restored, and active peers will be automatically synchronized with the WireGuard interface (<code>wg0</code>).
+            </p>
+
+            <form method="POST" action="/settings.php" enctype="multipart/form-data">
+                <?= csrf_field() ?>
+                <input type="hidden" name="action" value="import">
+
+                <div class="form-group mb-3">
+                    <label for="backup_file" class="form-label">Select Backup File (.json) <span class="text-danger">*</span></label>
+                    <input type="file" id="backup_file" name="backup_file" accept=".json,application/json" class="form-control" required>
+                </div>
+
+                <div class="alert alert-warning mb-3">
+                    <strong>Warning:</strong> Importing will replace all existing client records and synchronize active peers with WireGuard.
+                </div>
+
+                <button type="submit" class="btn btn-danger" data-confirm="Are you sure you want to import this configuration? This will replace existing clients and restore settings and credentials from the backup file.">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px; vertical-align: -2px;">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                    </svg>
+                    Import Configuration
+                </button>
+            </form>
+        </div>
+    </div>
+</div>

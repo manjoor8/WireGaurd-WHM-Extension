@@ -186,6 +186,24 @@ if (function_exists('sodium_crypto_scalarmult_base')) {
     assertTest(preg_match('/^[A-Za-z0-9+\/]{43}=$/', $keys['public_key']) === 1, 'Built-in crypto generated valid public key');
 }
 
+// Test 12: BackupService export and import
+use WireGuardManager\BackupService;
+$backup = new BackupService($pdo);
+$exported = $backup->export();
+assertTest($exported['format'] === 'wireguard-manager-backup', 'Backup format header is correct');
+assertTest(isset($exported['settings']['dns']), 'Exported settings contain DNS');
+assertTest(count($exported['clients']) >= 1, 'Exported clients contain at least one client');
+assertTest(!empty($exported['admin_auth']['password_hash']), 'Exported admin_auth contains password hash');
+
+$json = $backup->exportJson();
+$decoded = json_decode($json, true);
+assertTest(is_array($decoded) && $decoded['format'] === 'wireguard-manager-backup', 'Exported JSON is valid and decodable');
+
+// Test import
+$importResult = $backup->import($decoded, $mockWg);
+assertTest($importResult['clients_count'] >= 1, 'Import restored client count');
+assertTest(AuthService::verifyPassword('ValidPasswordWithMoreThan12Chars!'), 'Password hash remained valid after import');
+
 // Clean up temp DB
 @unlink($tempDbPath);
 

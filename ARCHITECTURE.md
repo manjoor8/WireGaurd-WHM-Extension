@@ -117,3 +117,10 @@ The application functions completely independently of cPanel, WHM, and Apache, w
   1. Sequential lowest-available IP search within `10.50.0.2` - `10.50.0.254`.
   2. Never reallocates an IP currently held by an active or disabled client.
   3. Deprioritizes recently revoked IPs unless the subnet pool is near exhaustion.
+
+---
+
+## 5. Configuration Backup & Disaster Recovery
+
+- **Full JSON Backup**: `BackupService` exports all client records (including Curve25519 private/public keys, IPs, and states), network profile defaults, audit logs, and the bcrypt administrator password hash into a portable JSON document.
+- **Atomic Import & Runtime Sync**: On import, operations are executed within an atomic database transaction (`BEGIN ... COMMIT`). Active clients are immediately synchronized with the active WireGuard interface (`wg0`) via privileged helper calls, and the administrator session credential fingerprint is refreshed to maintain seamless access.
