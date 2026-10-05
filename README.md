@@ -69,7 +69,7 @@ Clone or copy the repository onto the server and run `install.sh` as `root`:
 
 ```bash
 # Clone the repository
-git clone https://github.com/manjoor8/WireGaurd-WHM-Extension.git /root/wireguard-manager-src
+git clone https://github.com/manjoor8/WireGaurdManager.git /root/wireguard-manager-src
 cd /root/wireguard-manager-src
 
 # Execute installer

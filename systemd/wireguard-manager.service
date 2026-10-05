@@ -1,6 +1,6 @@
 [Unit]
 Description=WireGuard VPN Management Web Application
-Documentation=https://github.com/manjoor8/WireGaurd-WHM-Extension
+Documentation=https://github.com/manjoor8/WireGaurdManager
 After=network-online.target
 Wants=network-online.target
 

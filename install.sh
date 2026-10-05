@@ -379,7 +379,7 @@ log_info "Installing systemd unit '${SERVICE_NAME}'..."
 cat <<EOF > "$SYSTEMD_FILE"
 [Unit]
 Description=WireGuard VPN Management Web Application
-Documentation=https://github.com/manjoor8/WireGaurd-WHM-Extension
+Documentation=https://github.com/manjoor8/WireGaurdManager
 After=network-online.target
 Wants=network-online.target
 
@@ -415,7 +415,7 @@ log_info "Installing systemd unit '${TLS_SERVICE_NAME}'..."
 cat <<EOF > "$TLS_SYSTEMD_FILE"
 [Unit]
 Description=WireGuard VPN Manager TLS Terminator (stunnel)
-Documentation=https://github.com/manjoor8/WireGaurd-WHM-Extension
+Documentation=https://github.com/manjoor8/WireGaurdManager
 After=network-online.target ${SERVICE_NAME}
 Wants=network-online.target
 

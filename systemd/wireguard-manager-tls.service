@@ -1,6 +1,6 @@
 [Unit]
 Description=WireGuard VPN Manager TLS Terminator (stunnel)
-Documentation=https://github.com/manjoor8/WireGaurd-WHM-Extension
+Documentation=https://github.com/manjoor8/WireGaurdManager
 After=network-online.target wireguard-manager.service
 Wants=network-online.target
 
