@@ -38,7 +38,7 @@ Internet (Public)
 ### Security Boundary Model
 - **Exclusively Bound Socket**: The application binds strictly to `10.50.0.1:5050`. It never binds to `0.0.0.0`, `*`, `::`, or the public IP.
 - **Physical Unreachability**: Because no process listens on the public interface on port 5050, external traffic from the public Internet cannot reach the web application.
-- **V1 Authentication-Free by Design**: Access is authorized solely by cryptographic possession of an authorized WireGuard peer tunnel key on `10.50.0.0/24`. Application authentication is not implemented in V1.
+- **Password Protected**: Web interface access requires administrator password authentication (`[REDACTED]`, customizable via `ADMIN_PASSWORD` environment variable in the systemd service).
 - **Privilege Separation**: The web application runs under an unprivileged system user (`wireguard-manager`). WireGuard operations are executed via a dedicated, strictly validated helper script (`/usr/local/bin/wireguard-manager-helper`) via restricted sudo rules.
 - **Sensitive Key Protection**: Private keys are never logged in application logs, audit logs, or system journals.
 

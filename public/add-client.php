@@ -7,10 +7,13 @@ if (session_status() === PHP_SESSION_NONE) {
 
 require_once dirname(__DIR__) . '/src/bootstrap.php';
 
+use WireGuardManager\AuthService;
 use WireGuardManager\WireGuardService;
 use WireGuardManager\ConfigService;
 use WireGuardManager\ClientService;
 use WireGuardManager\Database;
+
+AuthService::requireAuth();
 
 $csrfToken = $_SESSION['csrf_token'] ?? '';
 

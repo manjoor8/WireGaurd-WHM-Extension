@@ -41,6 +41,7 @@ unset($_SESSION['flash_error']);
                 <a href="/add-client.php" class="nav-item <?= $activeNav === 'add-client' ? 'active' : '' ?>">Add Client</a>
                 <a href="/settings.php" class="nav-item <?= $activeNav === 'settings' ? 'active' : '' ?>">Settings</a>
                 <a href="/logs.php" class="nav-item <?= $activeNav === 'logs' ? 'active' : '' ?>">Audit Logs</a>
+                <a href="/logout.php" class="nav-item" style="color: #f87171;" title="Sign out of WireGuard Manager">Logout</a>
             </nav>
         </div>
     </header>

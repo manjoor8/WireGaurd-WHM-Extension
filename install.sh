@@ -259,6 +259,7 @@ Environment=APP_ENV=production
 Environment=DATABASE_PATH=${DB_FILE}
 Environment=HELPER_BIN=${HELPER_BIN}
 Environment=SESSION_DIR=${DATA_DIR}/sessions
+Environment=ADMIN_PASSWORD=[REDACTED]
 
 [Install]
 WantedBy=multi-user.target

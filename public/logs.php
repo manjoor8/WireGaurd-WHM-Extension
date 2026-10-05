@@ -5,8 +5,11 @@ session_start();
 
 require_once dirname(__DIR__) . '/src/bootstrap.php';
 
+use WireGuardManager\AuthService;
 use WireGuardManager\AuditService;
 use WireGuardManager\Database;
+
+AuthService::requireAuth();
 
 $db = Database::getConnection();
 $audit = new AuditService($db);

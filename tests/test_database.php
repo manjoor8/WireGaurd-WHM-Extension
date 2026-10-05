@@ -157,7 +157,12 @@ assertTest(in_array('DISABLE_CLIENT', $actions), 'Audit log contains DISABLE_CLI
 assertTest(in_array('ENABLE_CLIENT', $actions), 'Audit log contains ENABLE_CLIENT');
 assertTest(in_array('REVOKE_CLIENT', $actions), 'Audit log contains REVOKE_CLIENT');
 
+// Test 10: AuthService password verification
+use WireGuardManager\AuthService;
+assertTest(AuthService::verifyPassword('[REDACTED]'), 'AuthService accepts default password [REDACTED]');
+assertTest(!AuthService::verifyPassword('WrongPassword123'), 'AuthService rejects incorrect password');
+
 // Clean up temp DB
 @unlink($tempDbPath);
 
-echo "\nAll database & lifecycle tests passed successfully!\n";
+echo "\nAll database, lifecycle & authentication tests passed successfully!\n";
