@@ -91,11 +91,42 @@ class ClientService
         return $imported;
     }
 
+    /**
+     * Synchronizes active clients from the database to the WireGuard runtime.
+     * Ensures peers remain configured on the interface even after server reboot or interface reload.
+     */
+    public function syncActiveClientsToWireGuard(): int
+    {
+        $stmt = $this->db->query("SELECT public_key, vpn_ip, state FROM clients WHERE state = 'active'");
+        $activeClients = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        if (empty($activeClients)) {
+            return 0;
+        }
+
+        $livePeers = $this->wg->listPeers();
+        $synced = 0;
+        foreach ($activeClients as $client) {
+            $pubKey = $client['public_key'];
+            $vpnIp = $client['vpn_ip'];
+            if (!isset($livePeers[$pubKey])) {
+                try {
+                    $this->wg->addPeer($pubKey, $vpnIp);
+                    $synced++;
+                } catch (\Throwable $e) {
+                    // Ignore individual failure
+                }
+            }
+        }
+        return $synced;
+    }
+
     public function listClients(): array
     {
         // Automatically sync any existing peers found in WireGuard runtime
+        // and ensure database active clients are loaded onto the interface
         try {
             $this->syncExistingPeers();
+            $this->syncActiveClientsToWireGuard();
         } catch (\Throwable $e) {
             // Non-blocking sync error
         }

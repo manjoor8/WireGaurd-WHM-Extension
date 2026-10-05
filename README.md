@@ -52,14 +52,14 @@ Internet (Public)
 
 ## 2. Prerequisites
 
-The server must already have:
-1. **AlmaLinux 10.2** (or compatible RHEL-family Linux)
-2. **WireGuard** installed (`wg` CLI available)
-3. **Active WireGuard interface `wg0`** with IP `10.50.0.1/24` assigned
+The server requires:
+1. **AlmaLinux 10.2 / 9 / 8** (or compatible RHEL, Rocky, Fedora, Debian, or Ubuntu Linux)
+2. **Root privileges** (for running the installer and managing systemd units)
+3. **WireGuard**: If not already installed, `install.sh` will automatically install `wireguard-tools`, enable IPv4 kernel forwarding, configure `wg0` with IP `10.50.0.1/24` (listening on UDP `51820`), and enable `wg-quick@wg0`. If WireGuard is already installed, your existing configuration and keys are preserved untouched.
 4. **PHP CLI** (>= 8.0) with `pdo_sqlite` support
-5. **stunnel** (`dnf install stunnel`)
-6. **qrencode** (recommended for mobile QR code generation: `dnf install qrencode`)
-7. **OpenSSL** (for self-signed certificate generation)
+5. **stunnel** (automatically installed by `install.sh` if missing)
+6. **qrencode** (recommended for mobile QR code generation: automatically installed if missing)
+7. **OpenSSL** (for self-signed TLS certificate generation)
 
 ---
 
@@ -78,8 +78,8 @@ sudo ./install.sh
 ```
 
 ### What `install.sh` Does:
-1. Detects OS and verifies AlmaLinux / RHEL compatibility.
-2. Checks that `wg` binary exists, `wg0` interface is active, and `10.50.0.1` is assigned to `wg0`.
+1. Detects OS and verifies system compatibility.
+2. **WireGuard Detection & Setup**: Checks if WireGuard tools are installed. If missing, installs `wireguard-tools` and `iptables`. Enables IPv4 packet forwarding in sysctl. If `wg0` is not yet configured, automatically creates `/etc/wireguard/wg0.conf`, detects the primary egress interface for NAT masquerade, generates server keypair, configures firewall (`firewalld`/`ufw`), and enables `wg-quick@wg0`. If `wg0` already exists, preserves it completely.
 3. Verifies that ports `5443` (TLS) and `5050` (backend) are available.
 4. Detects PHP CLI and ensures `pdo_sqlite` extension is loaded.
 5. Installs `stunnel` and `qrencode` packages if missing.

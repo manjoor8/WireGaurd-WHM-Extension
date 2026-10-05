@@ -23,6 +23,7 @@ SUDOERS_FILE="/etc/sudoers.d/${APP_NAME}"
 
 REQUIRED_IFACE="wg0"
 REQUIRED_IP="10.50.0.1"
+WG_PORT="51820"
 TLS_PORT="5443"
 BACKEND_PORT="5050"
 
@@ -66,26 +67,125 @@ else
     log_warn "Cannot read /etc/os-release."
 fi
 
-# 3. Detect WireGuard tools
-log_info "Checking WireGuard utility..."
+# 3. Detect or Install WireGuard Tools
+log_info "Checking WireGuard utility ('wg')..."
 if ! command -v wg >/dev/null 2>&1; then
-    fatal "WireGuard utility ('wg') is not found or not in PATH. Please ensure WireGuard is installed."
+    log_info "WireGuard utility ('wg') is not found. Attempting automatic installation..."
+    if command -v dnf >/dev/null 2>&1; then
+        dnf install -y epel-release >/dev/null 2>&1 || true
+        dnf install -y wireguard-tools iptables >/dev/null 2>&1 || true
+    elif command -v yum >/dev/null 2>&1; then
+        yum install -y epel-release >/dev/null 2>&1 || true
+        yum install -y wireguard-tools iptables >/dev/null 2>&1 || true
+    elif command -v apt-get >/dev/null 2>&1; then
+        DEBIAN_FRONTEND=noninteractive apt-get update -y >/dev/null 2>&1 || true
+        DEBIAN_FRONTEND=noninteractive apt-get install -y wireguard wireguard-tools iptables >/dev/null 2>&1 || true
+    fi
 fi
-log_ok "WireGuard utility found: $(command -v wg)"
 
-# 4. Check interface wg0 exists
-log_info "Checking WireGuard interface '${REQUIRED_IFACE}'..."
-if ! ip link show "$REQUIRED_IFACE" >/dev/null 2>&1; then
-    fatal "Required interface '${REQUIRED_IFACE}' does not exist. WireGuard VPN must be pre-configured."
+if ! command -v wg >/dev/null 2>&1; then
+    fatal "WireGuard utility ('wg') is not found and could not be installed automatically. Please install 'wireguard-tools' manually."
 fi
-log_ok "Interface '${REQUIRED_IFACE}' exists."
+log_ok "WireGuard utility confirmed: $(command -v wg)"
 
-# 5. Verify 10.50.0.1 is assigned to wg0
-log_info "Verifying IP address '${REQUIRED_IP}' on '${REQUIRED_IFACE}'..."
-if ! ip addr show dev "$REQUIRED_IFACE" | grep -qw "$REQUIRED_IP"; then
-    fatal "IP address '${REQUIRED_IP}' is NOT assigned to interface '${REQUIRED_IFACE}'. Management application requires this binding."
+# Ensure WireGuard kernel module is loaded if available
+modprobe wireguard >/dev/null 2>&1 || true
+
+# 4. Check & Enable Kernel IPv4 Packet Forwarding
+log_info "Checking IPv4 packet forwarding..."
+IP_FORWARD=$(sysctl -n net.ipv4.ip_forward 2>/dev/null || echo "0")
+if [[ "$IP_FORWARD" != "1" ]]; then
+    log_info "Enabling packet forwarding (net.ipv4.ip_forward = 1)..."
+    mkdir -p /etc/sysctl.d
+    cat <<'EOF' > /etc/sysctl.d/99-wireguard.conf
+net.ipv4.ip_forward = 1
+net.ipv6.conf.all.forwarding = 1
+EOF
+    sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || true
+    sysctl -p /etc/sysctl.d/99-wireguard.conf >/dev/null 2>&1 || true
+    log_ok "IPv4 packet forwarding enabled."
+else
+    log_ok "IPv4 packet forwarding is already active."
 fi
-log_ok "IP '${REQUIRED_IP}' confirmed on '${REQUIRED_IFACE}'."
+
+# 5. Detect, Configure, or Activate WireGuard Interface (wg0)
+log_info "Checking WireGuard interface '${REQUIRED_IFACE}' and IP '${REQUIRED_IP}'..."
+WG_IFACE_READY=0
+if ip link show "$REQUIRED_IFACE" >/dev/null 2>&1 && ip addr show dev "$REQUIRED_IFACE" 2>/dev/null | grep -qw "$REQUIRED_IP"; then
+    WG_IFACE_READY=1
+fi
+
+if [[ $WG_IFACE_READY -eq 1 ]]; then
+    log_ok "WireGuard interface '${REQUIRED_IFACE}' is already active with IP '${REQUIRED_IP}'."
+else
+    WG_CONF_DIR="/etc/wireguard"
+    WG_CONF_FILE="${WG_CONF_DIR}/${REQUIRED_IFACE}.conf"
+
+    if [[ -f "$WG_CONF_FILE" ]]; then
+        log_info "Found existing configuration file at ${WG_CONF_FILE}. Activating service..."
+    else
+        log_info "No existing WireGuard configuration found. Creating /etc/wireguard/${REQUIRED_IFACE}.conf..."
+        mkdir -p "$WG_CONF_DIR"
+        chmod 0700 "$WG_CONF_DIR"
+
+        # Detect primary WAN / egress network interface
+        MAIN_IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev") print $(i+1)}' || true)
+        if [[ -z "$MAIN_IFACE" ]]; then
+            MAIN_IFACE=$(ip route 2>/dev/null | grep default | awk '{print $5}' | head -n 1 || true)
+        fi
+        if [[ -z "$MAIN_IFACE" ]]; then
+            MAIN_IFACE="eth0"
+        fi
+        log_info "Detected egress network interface: ${MAIN_IFACE}"
+
+        # Generate server keypair
+        SERVER_PRIVKEY=$(wg genkey)
+        SERVER_PUBKEY=$(echo "$SERVER_PRIVKEY" | wg pubkey)
+
+        cat <<EOF > "$WG_CONF_FILE"
+[Interface]
+Address = ${REQUIRED_IP}/24
+ListenPort = ${WG_PORT}
+PrivateKey = ${SERVER_PRIVKEY}
+SaveConfig = false
+
+# Traffic forwarding & NAT masquerade
+PostUp = iptables -A FORWARD -i ${REQUIRED_IFACE} -j ACCEPT; iptables -A FORWARD -o ${REQUIRED_IFACE} -j ACCEPT; iptables -t nat -A POSTROUTING -o ${MAIN_IFACE} -j MASQUERADE
+PostDown = iptables -D FORWARD -i ${REQUIRED_IFACE} -j ACCEPT; iptables -D FORWARD -o ${REQUIRED_IFACE} -j ACCEPT; iptables -t nat -D POSTROUTING -o ${MAIN_IFACE} -j MASQUERADE
+EOF
+        chmod 0600 "$WG_CONF_FILE"
+        log_ok "WireGuard server configuration generated (Server Public Key: ${SERVER_PUBKEY})."
+    fi
+
+    # Configure firewall rules if firewalld or ufw is active
+    if systemctl is-active --quiet firewalld 2>/dev/null; then
+        log_info "Opening UDP port ${WG_PORT} and enabling masquerade in firewalld..."
+        firewall-cmd --add-port="${WG_PORT}/udp" --permanent >/dev/null 2>&1 || true
+        firewall-cmd --add-masquerade --permanent >/dev/null 2>&1 || true
+        firewall-cmd --reload >/dev/null 2>&1 || true
+        log_ok "firewalld rules applied."
+    elif command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qw "active"; then
+        log_info "Opening UDP port ${WG_PORT} in ufw..."
+        ufw allow "${WG_PORT}/udp" >/dev/null 2>&1 || true
+        log_ok "ufw rules applied."
+    fi
+
+    # Enable and start wg-quick@wg0 service
+    log_info "Enabling and starting systemd service 'wg-quick@${REQUIRED_IFACE}'..."
+    systemctl enable "wg-quick@${REQUIRED_IFACE}" >/dev/null 2>&1 || true
+    systemctl restart "wg-quick@${REQUIRED_IFACE}" >/dev/null 2>&1 || wg-quick up "$REQUIRED_IFACE" >/dev/null 2>&1 || true
+
+    sleep 1
+
+    # Verify interface is now up and assigned 10.50.0.1
+    if ! ip link show "$REQUIRED_IFACE" >/dev/null 2>&1; then
+        fatal "Failed to activate WireGuard interface '${REQUIRED_IFACE}'. Check 'journalctl -u wg-quick@${REQUIRED_IFACE}'."
+    fi
+    if ! ip addr show dev "$REQUIRED_IFACE" 2>/dev/null | grep -qw "$REQUIRED_IP"; then
+        fatal "Interface '${REQUIRED_IFACE}' is up, but IP '${REQUIRED_IP}' is not assigned."
+    fi
+    log_ok "WireGuard interface '${REQUIRED_IFACE}' confirmed active on '${REQUIRED_IP}'."
+fi
 
 # 6. Detect PHP CLI and SQLite3 / PDO SQLite support
 log_info "Detecting PHP CLI with PDO SQLite support..."
@@ -493,8 +593,8 @@ else
     log_warn "Run 'journalctl -u ${TLS_SERVICE_NAME} -n 20' and 'journalctl -u ${SERVICE_NAME} -n 20' for details."
 fi
 
-# 23. Synchronize Pre-Existing WireGuard Peers
-log_info "Synchronizing existing WireGuard peers from ${REQUIRED_IFACE}..."
+# 23. Synchronize WireGuard Peers
+log_info "Synchronizing WireGuard peers between interface '${REQUIRED_IFACE}' and database..."
 "$CHOSEN_PHP" -r '
     require_once "'"${APP_DIR}"'/src/bootstrap.php";
     \WireGuardManager\Database::setPath("'"${DB_FILE}"'");
@@ -502,9 +602,13 @@ log_info "Synchronizing existing WireGuard peers from ${REQUIRED_IFACE}..."
     $wg = new \WireGuardManager\WireGuardService("'"${HELPER_BIN}"'");
     $config = new \WireGuardManager\ConfigService($db);
     $cs = new \WireGuardManager\ClientService($db, $wg, $config);
-    $count = $cs->syncExistingPeers();
-    if ($count > 0) {
-        echo "Successfully imported $count existing WireGuard peer(s).\n";
+    $imported = $cs->syncExistingPeers();
+    if ($imported > 0) {
+        echo "Successfully imported $imported existing WireGuard peer(s) into database.\n";
+    }
+    $synced = $cs->syncActiveClientsToWireGuard();
+    if ($synced > 0) {
+        echo "Synchronized $synced active client(s) to WireGuard interface.\n";
     }
 ' 2>/dev/null || true
 chown "$APP_USER:$APP_GROUP" "$DB_FILE" 2>/dev/null || true
