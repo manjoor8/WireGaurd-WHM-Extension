@@ -128,16 +128,62 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // -------------------------------------------------------------
-    // Toggle Switch (Instant AJAX connect / disconnect)
+    // Action Dropdown Menu Toggle for each record
     // -------------------------------------------------------------
-    document.querySelectorAll('.client-toggle-switch').forEach(function (toggle) {
-        toggle.addEventListener('change', function () {
+    document.querySelectorAll('.btn-action-dropdown').forEach(function (btn) {
+        btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var wrapper = this.closest('.action-dropdown-wrapper');
+            var menu = wrapper ? wrapper.querySelector('.action-dropdown-menu') : null;
+            if (!menu) return;
+
+            var isOpen = menu.style.display === 'block';
+
+            // Close all other action dropdown menus
+            document.querySelectorAll('.action-dropdown-menu').forEach(function (m) {
+                m.style.display = 'none';
+            });
+            document.querySelectorAll('.btn-action-dropdown').forEach(function (b) {
+                b.setAttribute('aria-expanded', 'false');
+            });
+
+            if (!isOpen) {
+                menu.style.display = 'block';
+                btn.setAttribute('aria-expanded', 'true');
+            }
+        });
+    });
+
+    // Close action dropdowns when clicking outside
+    document.addEventListener('click', function (e) {
+        if (!e.target.closest('.action-dropdown-wrapper')) {
+            document.querySelectorAll('.action-dropdown-menu').forEach(function (m) {
+                m.style.display = 'none';
+            });
+            document.querySelectorAll('.btn-action-dropdown').forEach(function (b) {
+                b.setAttribute('aria-expanded', 'false');
+            });
+        }
+    });
+
+    // Close dropdown when any item inside is clicked
+    document.querySelectorAll('.action-dropdown-menu .dropdown-item').forEach(function (item) {
+        item.addEventListener('click', function () {
+            var menu = this.closest('.action-dropdown-menu');
+            if (menu) menu.style.display = 'none';
+        });
+    });
+
+    // -------------------------------------------------------------
+    // Menu Toggle Action (Instant AJAX Connect / Disconnect)
+    // -------------------------------------------------------------
+    document.querySelectorAll('.btn-menu-toggle').forEach(function (btn) {
+        btn.addEventListener('click', function (e) {
+            e.preventDefault();
             var clientId = this.getAttribute('data-client-id');
-            var checkbox = this;
+            var toggleBtn = this;
             var csrfToken = getCsrfToken();
             var row = document.getElementById('client-row-' + clientId);
-
-            checkbox.disabled = true;
 
             var formData = new FormData();
             formData.append('action', 'toggle');
@@ -155,29 +201,41 @@ document.addEventListener('DOMContentLoaded', function () {
             })
             .then(function (res) { return res.json(); })
             .then(function (data) {
-                checkbox.disabled = false;
                 if (data && data.success) {
-                    if (row) {
-                        if (data.state === 'active') {
+                    var badgeSpan = document.getElementById('client-badge-' + clientId);
+                    var textSpan = toggleBtn.querySelector('.toggle-text');
+                    var iconSvg = toggleBtn.querySelector('svg');
+
+                    if (data.state === 'active') {
+                        if (row) {
                             row.classList.remove('client-inactive');
                             row.setAttribute('data-state', 'active');
-                            checkbox.checked = true;
-                            checkbox.parentElement.setAttribute('title', 'Active (Click to disconnect)');
-                        } else {
+                        }
+                        if (badgeSpan) {
+                            badgeSpan.innerHTML = '<span class="badge badge-success"><span class="dot dot-online"></span> Active</span>';
+                        }
+                        if (textSpan) textSpan.textContent = 'Disconnect Client';
+                        if (iconSvg) {
+                            iconSvg.innerHTML = '<path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line>';
+                        }
+                    } else {
+                        if (row) {
                             row.classList.add('client-inactive');
                             row.setAttribute('data-state', 'disabled');
-                            checkbox.checked = false;
-                            checkbox.parentElement.setAttribute('title', 'Disconnected (Click to connect)');
+                        }
+                        if (badgeSpan) {
+                            badgeSpan.innerHTML = '<span class="badge badge-warning">Disconnected</span>';
+                        }
+                        if (textSpan) textSpan.textContent = 'Connect Client';
+                        if (iconSvg) {
+                            iconSvg.innerHTML = '<polyline points="20 6 9 17 4 12"></polyline>';
                         }
                     }
                 } else {
-                    checkbox.checked = !checkbox.checked;
                     alert('Could not toggle client: ' + (data.error || 'Server error'));
                 }
             })
             .catch(function (err) {
-                checkbox.disabled = false;
-                checkbox.checked = !checkbox.checked;
                 alert('Connection error: ' + err.message);
             });
         });

@@ -1207,7 +1207,7 @@ code {
     border: 1px solid var(--border-color);
     border-radius: 8px;
     box-shadow: var(--shadow);
-    overflow: hidden;
+    overflow: visible;
 }
 
 .clients-list {
@@ -1217,6 +1217,7 @@ code {
 
 /* Client Card Row */
 .client-card-row {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -1268,6 +1269,18 @@ code {
     display: flex;
     flex-direction: column;
     gap: 3px;
+}
+
+.client-name-status {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.client-badge-wrapper .badge {
+    font-size: 0.72rem;
+    padding: 0.18rem 0.5rem;
 }
 
 .client-title-link {
@@ -1339,7 +1352,7 @@ code {
     font-weight: 700;
 }
 
-/* Right: Action Buttons & Toggle */
+/* Right: Action Dropdown Menu for each record */
 .client-actions-col {
     display: flex;
     align-items: center;
@@ -1348,79 +1361,97 @@ code {
     flex-shrink: 0;
 }
 
-/* iOS / wg-easy style toggle slider */
-.switch-control {
+.action-dropdown-wrapper {
     position: relative;
     display: inline-block;
-    width: 48px;
-    height: 26px;
-    margin-right: 0.35rem;
-    flex-shrink: 0;
 }
 
-.switch-control input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-}
-
-.switch-slider {
-    position: absolute;
-    cursor: pointer;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background-color: #4b5563; /* Neutral grey when disabled */
-    transition: background-color 0.25s ease;
-    border-radius: 26px;
-}
-
-.switch-slider:before {
-    position: absolute;
-    content: "";
-    height: 20px;
-    width: 20px;
-    left: 3px;
-    bottom: 3px;
-    background-color: #ffffff;
-    transition: transform 0.25s ease;
-    border-radius: 50%;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
-}
-
-.switch-control input:checked + .switch-slider {
-    background-color: #b02a37; /* Vibrant red active toggle matching mockup */
-}
-
-.switch-control input:checked + .switch-slider:before {
-    transform: translateX(22px);
-}
-
-.switch-control input:disabled + .switch-slider {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-/* Action Icon Buttons */
-.btn-icon-box {
-    width: 38px;
-    height: 38px;
-    border-radius: 6px;
-    background-color: rgba(255, 255, 255, 0.05);
+.btn-action-dropdown {
+    background-color: rgba(255, 255, 255, 0.06);
     border: 1px solid var(--border-color);
-    color: var(--text-secondary);
+    color: var(--text-primary);
+    border-radius: 6px;
+    padding: 0.45rem 0.85rem;
+    font-size: 0.875rem;
+    font-weight: 500;
     display: inline-flex;
     align-items: center;
-    justify-content: center;
+    gap: 0.45rem;
     cursor: pointer;
-    text-decoration: none;
     transition: all 0.15s ease;
-    padding: 0;
-    flex-shrink: 0;
+    white-space: nowrap;
 }
 
-.btn-icon-box:hover {
+.btn-action-dropdown:hover,
+.btn-action-dropdown[aria-expanded="true"] {
     background-color: rgba(255, 255, 255, 0.12);
-    color: var(--text-primary);
     border-color: #64748b;
+    color: #ffffff;
+}
+
+.action-dropdown-menu {
+    position: absolute;
+    top: calc(100% + 5px);
+    right: 0;
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
+    z-index: 150;
+    min-width: 200px;
+    padding: 0.35rem 0;
+    overflow: hidden;
+}
+
+.action-dropdown-menu .dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    width: 100%;
+    padding: 0.6rem 1rem;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
+    box-sizing: border-box;
+}
+
+.action-dropdown-menu .dropdown-item:hover {
+    background-color: var(--bg-card-hover);
+    color: var(--text-primary);
+}
+
+.action-dropdown-menu .dropdown-item svg {
+    flex-shrink: 0;
+    color: var(--text-muted);
+    transition: color 0.15s ease;
+}
+
+.action-dropdown-menu .dropdown-item:hover svg {
+    color: var(--text-primary);
+}
+
+.action-dropdown-menu .dropdown-item-danger {
+    color: #ef4444 !important;
+}
+
+.action-dropdown-menu .dropdown-item-danger svg {
+    color: #ef4444 !important;
+}
+
+.action-dropdown-menu .dropdown-item-danger:hover {
+    background-color: rgba(239, 68, 68, 0.12) !important;
+    color: #f87171 !important;
+}
+
+.dropdown-divider {
+    height: 1px;
+    background-color: var(--border-color);
+    margin: 0.35rem 0;
 }
 
 .btn-icon-delete:hover {

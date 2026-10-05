@@ -85,7 +85,20 @@
                             </svg>
                         </div>
                         <div class="client-identity">
-                            <a href="/client.php?id=<?= (int)$c['id'] ?>" class="client-title-link" id="client-title-<?= (int)$c['id'] ?>"><?= h($c['name']) ?></a>
+                            <div class="client-name-status">
+                                <a href="/client.php?id=<?= (int)$c['id'] ?>" class="client-title-link" id="client-title-<?= (int)$c['id'] ?>"><?= h($c['name']) ?></a>
+                                <span class="client-badge-wrapper" id="client-badge-<?= (int)$c['id'] ?>">
+                                    <?php if ($isRevoked): ?>
+                                        <span class="badge badge-danger">Revoked</span>
+                                    <?php elseif ($isDisabled): ?>
+                                        <span class="badge badge-warning">Disconnected</span>
+                                    <?php elseif (!empty($c['is_online'])): ?>
+                                        <span class="badge badge-success"><span class="dot dot-online"></span> Online</span>
+                                    <?php else: ?>
+                                        <span class="badge badge-neutral"><span class="dot dot-offline"></span> Offline</span>
+                                    <?php endif; ?>
+                                </span>
+                            </div>
                             <div class="client-ip-text">
                                 <?= h($c['vpn_ip']) ?>
                             </div>
@@ -124,75 +137,95 @@
                         <?php endif; ?>
                     </div>
 
-                    <!-- Right: Action Controls (Toggle, Edit, QR, Download, View, Delete) -->
+                    <!-- Right: Dropdown Action Menu for each record -->
                     <div class="client-actions-col">
-                        <!-- Toggle Switch -->
-                        <?php if (!$isRevoked): ?>
-                            <label class="switch-control" title="<?= $isActive ? 'Active (Click to disconnect)' : 'Disconnected (Click to connect)' ?>">
-                                <input type="checkbox" class="client-toggle-switch" data-client-id="<?= (int)$c['id'] ?>" <?= $isActive ? 'checked' : '' ?>>
-                                <span class="switch-slider"></span>
-                            </label>
-                        <?php else: ?>
-                            <span class="badge badge-danger">Revoked</span>
-                        <?php endif; ?>
-
-                        <!-- Edit Button (Pencil Icon) -->
-                        <button type="button" class="btn-icon-box btn-edit-trigger" 
-                                data-client-id="<?= (int)$c['id'] ?>" 
-                                data-client-name="<?= h($c['name']) ?>" 
-                                data-client-desc="<?= h($c['description'] ?? '') ?>"
-                                title="Edit client details">
-                            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                            </svg>
-                        </button>
-
-                        <!-- QR Code Button (Grid Icon) -->
-                        <?php if (!$isRevoked): ?>
-                            <button type="button" class="btn-icon-box btn-qr-trigger" 
-                                    data-client-id="<?= (int)$c['id'] ?>" 
-                                    data-client-name="<?= h($c['name']) ?>" 
-                                    title="Show QR Code">
-                                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                    <rect x="3" y="3" width="7" height="7"></rect>
-                                    <rect x="14" y="3" width="7" height="7"></rect>
-                                    <rect x="14" y="14" width="7" height="7"></rect>
-                                    <rect x="3" y="14" width="7" height="7"></rect>
+                        <div class="action-dropdown-wrapper">
+                            <button type="button" class="btn-action-dropdown" id="btnAction-<?= (int)$c['id'] ?>" aria-expanded="false" aria-haspopup="true">
+                                <span>Action</span>
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="6 9 12 15 18 9"></polyline>
                                 </svg>
                             </button>
+                            <div class="action-dropdown-menu" id="actionMenu-<?= (int)$c['id'] ?>" style="display: none;">
+                                <?php if (!$isRevoked): ?>
+                                    <!-- Toggle Connect / Disconnect -->
+                                    <button type="button" class="dropdown-item btn-menu-toggle" data-client-id="<?= (int)$c['id'] ?>">
+                                        <?php if ($isActive): ?>
+                                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+                                                <line x1="12" y1="2" x2="12" y2="12"></line>
+                                            </svg>
+                                            <span class="toggle-text">Disconnect Client</span>
+                                        <?php else: ?>
+                                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                <polyline points="20 6 9 17 4 12"></polyline>
+                                            </svg>
+                                            <span class="toggle-text">Connect Client</span>
+                                        <?php endif; ?>
+                                    </button>
 
-                            <!-- Download Configuration File Button (Tray Icon) -->
-                            <a href="/client.php?id=<?= (int)$c['id'] ?>&download=1" class="btn-icon-box" title="Download WireGuard (.conf) configuration">
-                                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                                    <polyline points="7 10 12 15 17 10"></polyline>
-                                    <line x1="12" y1="15" x2="12" y2="3"></line>
-                                </svg>
-                            </a>
-                        <?php endif; ?>
+                                    <!-- Edit Client Details -->
+                                    <button type="button" class="dropdown-item btn-edit-trigger" 
+                                            data-client-id="<?= (int)$c['id'] ?>" 
+                                            data-client-name="<?= h($c['name']) ?>" 
+                                            data-client-desc="<?= h($c['description'] ?? '') ?>">
+                                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                        </svg>
+                                        <span>Edit Details</span>
+                                    </button>
 
-                        <!-- Link Button (Details View) -->
-                        <a href="/client.php?id=<?= (int)$c['id'] ?>" class="btn-icon-box" title="View Full Details">
-                            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
-                                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
-                            </svg>
-                        </a>
+                                    <!-- QR Code -->
+                                    <button type="button" class="dropdown-item btn-qr-trigger" 
+                                            data-client-id="<?= (int)$c['id'] ?>" 
+                                            data-client-name="<?= h($c['name']) ?>">
+                                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <rect x="3" y="3" width="7" height="7"></rect>
+                                            <rect x="14" y="3" width="7" height="7"></rect>
+                                            <rect x="14" y="14" width="7" height="7"></rect>
+                                            <rect x="3" y="14" width="7" height="7"></rect>
+                                        </svg>
+                                        <span>Show QR Code</span>
+                                    </button>
 
-                        <!-- Delete Button (Trash Can Icon) - Permanent Deletion from DB & WireGuard -->
-                        <button type="button" class="btn-icon-box btn-icon-delete btn-delete-trigger" 
-                                data-client-id="<?= (int)$c['id'] ?>" 
-                                data-client-name="<?= h($c['name']) ?>" 
-                                data-client-ip="<?= h($c['vpn_ip']) ?>"
-                                title="Delete client permanently">
-                            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <polyline points="3 6 5 6 21 6"></polyline>
-                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                                <line x1="10" y1="11" x2="10" y2="17"></line>
-                                <line x1="14" y1="11" x2="14" y2="17"></line>
-                            </svg>
-                        </button>
+                                    <!-- Download Configuration (.conf) -->
+                                    <a href="/client.php?id=<?= (int)$c['id'] ?>&download=1" class="dropdown-item">
+                                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                            <polyline points="7 10 12 15 17 10"></polyline>
+                                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                                        </svg>
+                                        <span>Download .conf</span>
+                                    </a>
+                                <?php endif; ?>
+
+                                <!-- View Details -->
+                                <a href="/client.php?id=<?= (int)$c['id'] ?>" class="dropdown-item">
+                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                                    </svg>
+                                    <span>View Details</span>
+                                </a>
+
+                                <div class="dropdown-divider"></div>
+
+                                <!-- Delete Client -->
+                                <button type="button" class="dropdown-item dropdown-item-danger btn-delete-trigger" 
+                                        data-client-id="<?= (int)$c['id'] ?>" 
+                                        data-client-name="<?= h($c['name']) ?>" 
+                                        data-client-ip="<?= h($c['vpn_ip']) ?>">
+                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <polyline points="3 6 5 6 21 6"></polyline>
+                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                        <line x1="10" y1="11" x2="10" y2="17"></line>
+                                        <line x1="14" y1="11" x2="14" y2="17"></line>
+                                    </svg>
+                                    <span>Delete Client</span>
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             <?php endforeach; ?>
