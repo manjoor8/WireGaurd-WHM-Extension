@@ -255,14 +255,15 @@ pid = /run/wireguard-manager-stunnel.pid
 syslog = yes
 
 [wireguard-manager-tls]
+client = no
 accept = ${REQUIRED_IP}:${TLS_PORT}
 connect = 127.0.0.1:${BACKEND_PORT}
 cert = ${TLS_CERT}
 key = ${TLS_KEY}
-sslVersion = TLSv1.3, TLSv1.2
 EOF
-chown root:"$APP_GROUP" "$STUNNEL_CONF"
-chmod 0640 "$STUNNEL_CONF"
+chown root:root "$TLS_KEY" "$TLS_CERT" "$STUNNEL_CONF"
+chmod 0600 "$TLS_KEY"
+chmod 0644 "$TLS_CERT" "$STUNNEL_CONF"
 log_ok "stunnel configuration configured."
 
 # 17. Initialize Database and Migrations
@@ -316,15 +317,54 @@ chmod 0660 "$DB_FILE"
 # 18. Administrator Password Configuration
 log_info "Checking administrator credential configuration..."
 export DATABASE_PATH="${DB_FILE}"
-if ! "$CHOSEN_PHP" "$PASSWD_BIN" --check >/dev/null 2>&1; then
+
+NEED_PASSWORD=1
+if "$CHOSEN_PHP" "$PASSWD_BIN" --check >/dev/null 2>&1; then
+    NEED_PASSWORD=0
+fi
+
+if [[ $NEED_PASSWORD -eq 1 ]]; then
     if [[ -n "${INITIAL_ADMIN_PASSWORD:-}" ]]; then
         log_info "Configuring administrator password from environment variable..."
         "$CHOSEN_PHP" "$PASSWD_BIN" --password "$INITIAL_ADMIN_PASSWORD"
-    elif [[ -t 0 ]]; then
+    elif [ -t 0 ] || [ -e /dev/tty ]; then
         echo ""
         log_warn "No administrator password is set in the database."
-        log_info "Please choose a strong password (minimum 12 characters):"
-        "$CHOSEN_PHP" "$PASSWD_BIN"
+        log_info "Please choose an administrator password (minimum 12 characters):"
+
+        PASSWORD_SET=0
+        while [[ $PASSWORD_SET -eq 0 ]]; do
+            P1=""
+            P2=""
+            if [ -e /dev/tty ]; then
+                read -r -s -p "Enter new administrator password: " P1 </dev/tty
+                echo ""
+                read -r -s -p "Confirm administrator password: " P2 </dev/tty
+                echo ""
+            else
+                read -r -s -p "Enter new administrator password: " P1
+                echo ""
+                read -r -s -p "Confirm administrator password: " P2
+                echo ""
+            fi
+
+            if [[ ${#P1} -lt 12 ]]; then
+                log_error "Password must be at least 12 characters long. Please try again."
+                continue
+            fi
+
+            if [[ "$P1" != "$P2" ]]; then
+                log_error "Passwords do not match. Please try again."
+                continue
+            fi
+
+            if "$CHOSEN_PHP" "$PASSWD_BIN" --password "$P1"; then
+                PASSWORD_SET=1
+                log_ok "Administrator password configured successfully."
+            else
+                log_error "Failed to set administrator password in database. Please try again."
+            fi
+        done
     else
         log_warn "Non-interactive installation detected and no administrator password configured."
         log_info "Generating a cryptographically secure random password..."
@@ -381,6 +421,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+User=root
+Group=root
 ExecStart=/usr/bin/stunnel ${STUNNEL_CONF}
 Restart=on-failure
 RestartSec=3s
@@ -447,7 +489,8 @@ HTTP_CODE=$(curl -k -s -o /dev/null -w "%{http_code}" "https://${REQUIRED_IP}:${
 if [[ "$HTTP_CODE" == "200" ]]; then
     log_ok "HTTPS health check passed: HTTP 200 OK."
 else
-    log_warn "Health check returned HTTP code: ${HTTP_CODE}. Service may still be initializing."
+    log_warn "Health check returned HTTP code: ${HTTP_CODE}."
+    log_warn "Run 'journalctl -u ${TLS_SERVICE_NAME} -n 20' and 'journalctl -u ${SERVICE_NAME} -n 20' for details."
 fi
 
 # 23. Synchronize Pre-Existing WireGuard Peers

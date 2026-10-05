@@ -22,17 +22,35 @@ if (php_sapi_name() !== 'cli') {
     exit(1);
 }
 
-require_once dirname(__DIR__) . '/src/autoload.php';
+// Dynamically locate application autoload.php
+$autoloadCandidates = [
+    '/opt/wireguard-manager/src/autoload.php',
+    dirname(__DIR__) . '/src/autoload.php',
+    dirname(__DIR__, 2) . '/src/autoload.php',
+];
+$autoloadPath = null;
+foreach ($autoloadCandidates as $loc) {
+    if (file_exists($loc)) {
+        $autoloadPath = $loc;
+        break;
+    }
+}
+if (!$autoloadPath) {
+    fwrite(STDERR, "Error: Unable to locate WireGuard Manager autoload.php\n");
+    exit(1);
+}
+require_once $autoloadPath;
 
 use WireGuardManager\AuthService;
 use WireGuardManager\Database;
 
 // Support custom database path if passed as env or flag
 $dbPath = getenv('DATABASE_PATH') ?: '/var/lib/wireguard-manager/wireguard.db';
-if (!file_exists(dirname($dbPath))) {
-    $fallback = dirname(__DIR__) . '/storage/wireguard.db';
-    if (file_exists(dirname($fallback))) {
-        $dbPath = $fallback;
+if (!file_exists($dbPath)) {
+    if (file_exists('/opt/wireguard-manager/storage/wireguard.db')) {
+        $dbPath = '/opt/wireguard-manager/storage/wireguard.db';
+    } elseif (file_exists(dirname(__DIR__) . '/storage/wireguard.db')) {
+        $dbPath = dirname(__DIR__) . '/storage/wireguard.db';
     }
 }
 Database::setPath($dbPath);

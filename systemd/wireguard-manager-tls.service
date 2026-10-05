@@ -6,6 +6,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+User=root
+Group=root
 ExecStart=/usr/bin/stunnel /etc/wireguard-manager/stunnel.conf
 Restart=on-failure
 RestartSec=3s

@@ -39,8 +39,17 @@ class Security
             )));
         }
 
-        $port = self::isHttps() ? self::TLS_PORT : self::PLAIN_PORT;
-        return [self::MANAGEMENT_HOST . ':' . $port];
+        return [
+            self::MANAGEMENT_HOST . ':' . self::TLS_PORT,
+            self::MANAGEMENT_HOST . ':' . self::PLAIN_PORT,
+            self::MANAGEMENT_HOST,
+            '127.0.0.1:' . self::PLAIN_PORT,
+            '127.0.0.1:' . self::TLS_PORT,
+            '127.0.0.1',
+            'localhost:' . self::PLAIN_PORT,
+            'localhost:' . self::TLS_PORT,
+            'localhost',
+        ];
     }
 
     public static function allowedOrigins(): array
