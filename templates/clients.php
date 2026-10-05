@@ -50,7 +50,7 @@
                                     <?php if ($c['state'] === 'revoked'): ?>
                                         <span class="badge badge-danger">Revoked</span>
                                     <?php elseif ($c['state'] === 'disabled'): ?>
-                                        <span class="badge badge-warning">Disabled</span>
+                                        <span class="badge badge-warning">Disconnected</span>
                                     <?php elseif ($c['is_online']): ?>
                                         <span class="badge badge-success"><span class="dot dot-online"></span> Online</span>
                                     <?php else: ?>
@@ -70,18 +70,24 @@
                                         <button type="button" class="btn btn-xs btn-outline btn-qr" data-client-id="<?= (int)$c['id'] ?>" data-client-name="<?= h($c['name']) ?>" title="Show QR Code">QR</button>
                                         
                                         <?php if ($c['state'] === 'active'): ?>
-                                            <form method="POST" action="/clients.php" class="inline-form">
-                                                <input type="hidden" name="csrf_token" value="<?= h($csrfToken) ?>">
-                                                <input type="hidden" name="action" value="disable">
+                                            <?php if ($c['is_online']): ?>
+                                                <form method="POST" action="/clients.php" class="inline-form" onsubmit="return confirm('Forcefully reset active tunnel session for <?= h($c['name']) ?>?');">
+                                                    <input type="hidden" name="action" value="reset_session">
+                                                    <input type="hidden" name="client_id" value="<?= (int)$c['id'] ?>">
+                                                    <button type="submit" class="btn btn-xs btn-outline" style="color: #f59e0b; border-color: rgba(245, 158, 11, 0.5);" title="Kick / Reset Active Session">Kick</button>
+                                                </form>
+                                            <?php endif; ?>
+
+                                            <form method="POST" action="/clients.php" class="inline-form" onsubmit="return confirm('Forcefully disconnect <?= h($c['name']) ?> from WireGuard?');">
+                                                <input type="hidden" name="action" value="disconnect">
                                                 <input type="hidden" name="client_id" value="<?= (int)$c['id'] ?>">
-                                                <button type="submit" class="btn btn-xs btn-warning" title="Disable peer in WireGuard">Disable</button>
+                                                <button type="submit" class="btn btn-xs btn-warning" title="Forcefully disconnect peer from WireGuard">Disconnect</button>
                                             </form>
                                         <?php elseif ($c['state'] === 'disabled'): ?>
                                             <form method="POST" action="/clients.php" class="inline-form">
-                                                <input type="hidden" name="csrf_token" value="<?= h($csrfToken) ?>">
                                                 <input type="hidden" name="action" value="enable">
                                                 <input type="hidden" name="client_id" value="<?= (int)$c['id'] ?>">
-                                                <button type="submit" class="btn btn-xs btn-success" title="Enable peer in WireGuard">Enable</button>
+                                                <button type="submit" class="btn btn-xs btn-success" title="Allow client to connect">Connect</button>
                                             </form>
                                         <?php endif; ?>
 

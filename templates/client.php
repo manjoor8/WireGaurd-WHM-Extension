@@ -18,16 +18,21 @@
             <a href="/client.php?id=<?= (int)$client['id'] ?>&download=1" class="btn btn-outline">&darr; Download .conf</a>
             
             <?php if ($client['state'] === 'active'): ?>
-                <form method="POST" action="/client.php?id=<?= (int)$client['id'] ?>" class="inline-form">
-                    <input type="hidden" name="csrf_token" value="<?= h($csrfToken) ?>">
-                    <input type="hidden" name="action" value="disable">
-                    <button type="submit" class="btn btn-warning">Disable Client</button>
+                <?php if ($client['is_online']): ?>
+                    <form method="POST" action="/client.php?id=<?= (int)$client['id'] ?>" class="inline-form" onsubmit="return confirm('Forcefully reset active session for <?= h($client['name']) ?>?');">
+                        <input type="hidden" name="action" value="reset_session">
+                        <button type="submit" class="btn btn-outline" style="color: #f59e0b; border-color: rgba(245, 158, 11, 0.5);" title="Kick / Reset Active Session">&#x26A1; Reset Session (Kick)</button>
+                    </form>
+                <?php endif; ?>
+
+                <form method="POST" action="/client.php?id=<?= (int)$client['id'] ?>" class="inline-form" onsubmit="return confirm('Forcefully disconnect <?= h($client['name']) ?> from WireGuard?');">
+                    <input type="hidden" name="action" value="disconnect">
+                    <button type="submit" class="btn btn-warning">&#x23FB; Force Disconnect</button>
                 </form>
             <?php elseif ($client['state'] === 'disabled'): ?>
                 <form method="POST" action="/client.php?id=<?= (int)$client['id'] ?>" class="inline-form">
-                    <input type="hidden" name="csrf_token" value="<?= h($csrfToken) ?>">
                     <input type="hidden" name="action" value="enable">
-                    <button type="submit" class="btn btn-success">Enable Client</button>
+                    <button type="submit" class="btn btn-success">&#x2714; Connect Client</button>
                 </form>
             <?php endif; ?>
 
@@ -53,7 +58,7 @@
                             <?php if ($client['state'] === 'revoked'): ?>
                                 <span class="badge badge-danger">Revoked</span>
                             <?php elseif ($client['state'] === 'disabled'): ?>
-                                <span class="badge badge-warning">Disabled</span>
+                                <span class="badge badge-warning">Disconnected</span>
                             <?php else: ?>
                                 <span class="badge badge-success">Active</span>
                             <?php endif; ?>

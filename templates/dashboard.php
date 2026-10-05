@@ -133,7 +133,7 @@
                                     <?php if ($c['state'] === 'revoked'): ?>
                                         <span class="badge badge-danger">Revoked</span>
                                     <?php elseif ($c['state'] === 'disabled'): ?>
-                                        <span class="badge badge-warning">Disabled</span>
+                                        <span class="badge badge-warning">Disconnected</span>
                                     <?php elseif ($c['is_online']): ?>
                                         <span class="badge badge-success"><span class="dot dot-online"></span> Online</span>
                                     <?php else: ?>
@@ -148,6 +148,19 @@
                                 <td class="text-right table-actions">
                                     <a href="/client.php?id=<?= (int)$c['id'] ?>" class="btn btn-xs btn-outline">View</a>
                                     <a href="/client.php?id=<?= (int)$c['id'] ?>&download=1" class="btn btn-xs btn-outline">Config</a>
+                                    <?php if ($c['state'] === 'active'): ?>
+                                        <form method="POST" action="/clients.php" class="inline-form" onsubmit="return confirm('Forcefully disconnect <?= h($c['name']) ?> from WireGuard?');">
+                                            <input type="hidden" name="action" value="disconnect">
+                                            <input type="hidden" name="client_id" value="<?= (int)$c['id'] ?>">
+                                            <button type="submit" class="btn btn-xs btn-warning" title="Forcefully disconnect">Disconnect</button>
+                                        </form>
+                                    <?php elseif ($c['state'] === 'disabled'): ?>
+                                        <form method="POST" action="/clients.php" class="inline-form">
+                                            <input type="hidden" name="action" value="enable">
+                                            <input type="hidden" name="client_id" value="<?= (int)$c['id'] ?>">
+                                            <button type="submit" class="btn btn-xs btn-success" title="Connect client">Connect</button>
+                                        </form>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php endforeach; ?>

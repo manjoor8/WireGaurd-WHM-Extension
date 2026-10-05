@@ -27,9 +27,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $error = '';
 
     try {
-        if ($action === 'disable') {
+        if ($action === 'disconnect' || $action === 'disable') {
             $clientService->disableClient($clientId);
-            $msg = "Client has been disabled and removed from active interface.";
+            $msg = "Client has been forcefully disconnected from WireGuard.";
+        } elseif ($action === 'reset_session' || $action === 'kick') {
+            $clientService->resetSession($clientId);
+            $msg = "Active session for client was forcefully terminated (kicked).";
         } elseif ($action === 'enable') {
             $clientService->enableClient($clientId);
             $msg = "Client has been enabled and restored to WireGuard.";

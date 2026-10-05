@@ -269,6 +269,30 @@ class ClientService
         return true;
     }
 
+    public function disconnectClient(int $id): bool
+    {
+        return $this->disableClient($id);
+    }
+
+    public function resetSession(int $id): bool
+    {
+        $client = $this->getClient($id);
+        if (!$client) {
+            throw new InvalidArgumentException("Client not found.");
+        }
+
+        if ($client['state'] !== 'active') {
+            throw new RuntimeException("Cannot reset session for an inactive or disconnected client.");
+        }
+
+        // Forcefully purge active WireGuard kernel session state by dropping and re-adding peer
+        $this->wg->removePeer($client['public_key']);
+        $this->wg->addPeer($client['public_key'], $client['vpn_ip']);
+
+        $this->audit->log('RESET_SESSION', "Forcefully kicked/reset active session for '{$client['name']}' ({$client['vpn_ip']})");
+        return true;
+    }
+
     public function enableClient(int $id): bool
     {
         $client = $this->getClient($id);

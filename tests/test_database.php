@@ -117,16 +117,20 @@ assertTest(!empty($c1['config']), 'Configuration generated for first client');
 $c2 = $clientService->createClient('bob-phone', 'Bob mobile');
 assertTest($c2['vpn_ip'] === '10.50.0.3', 'Second client allocated 10.50.0.3');
 
-// Test 6: Disable and re-enable client
-$clientService->disableClient((int)$c1['id']);
+// Test 6: Disable, disconnect, and re-enable client
+$clientService->disconnectClient((int)$c1['id']);
 $c1Reload = $clientService->getClient((int)$c1['id']);
-assertTest($c1Reload['state'] === 'disabled', 'Client state updated to disabled');
-assertTest(!isset($mockWg->activePeers[$c1['public_key']]), 'Disabled peer removed from WireGuard runtime');
+assertTest($c1Reload['state'] === 'disabled', 'Client state updated to disconnected (disabled)');
+assertTest(!isset($mockWg->activePeers[$c1['public_key']]), 'Disconnected peer removed from WireGuard runtime');
 
 $clientService->enableClient((int)$c1['id']);
 $c1Reload2 = $clientService->getClient((int)$c1['id']);
 assertTest($c1Reload2['state'] === 'active', 'Client state re-enabled to active');
 assertTest(isset($mockWg->activePeers[$c1['public_key']]), 'Enabled peer restored in WireGuard runtime');
+
+// Test 6b: Reset session (Kick) on active client
+$clientService->resetSession((int)$c1['id']);
+assertTest(isset($mockWg->activePeers[$c1['public_key']]), 'Peer active in WireGuard after session reset');
 
 // Test 7: Revoke client
 $clientService->revokeClient((int)$c1['id']);
