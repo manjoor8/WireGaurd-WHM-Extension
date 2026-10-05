@@ -3,7 +3,7 @@
 A secure, lightweight standalone web management application for an existing WireGuard VPN server on AlmaLinux 10.2 / RHEL systems.
 
 > **IMPORTANT ARCHITECTURAL NOTICE:**
-> This application is **NOT** a WHM or cPanel plugin. It does not use WHM plugin APIs, cPanel hooks, or Apache reverse proxies. It runs as an independent, unprivileged systemd service bound exclusively to the private WireGuard VPN interface (`10.50.0.1:5050`).
+> This application is **NOT** a WHM or cPanel plugin. It does not use WHM plugin APIs, cPanel hooks, or Apache reverse proxies. It runs as independent systemd services serving encrypted HTTPS bound exclusively to the private WireGuard VPN interface (`https://10.50.0.1:5443`).
 
 ---
 
@@ -18,29 +18,35 @@ Internet (Public)
        |
   Linux Server (AlmaLinux 10.2)
        |
-       +--- eth0 (Public IP - No port 5050 listener)
+       +--- eth0 (Public IP - No management listener)
        |
        +--- wg0 (WireGuard Interface: 10.50.0.1)
                  |
-                 +=============================+
-                 | WireGuard VPN Network       |
-                 | Subnet: 10.50.0.0/24        |
-                 +=============================+
+                 +========================================+
+                 | WireGuard VPN Network                  |
+                 | Subnet: 10.50.0.0/24                   |
+                 +========================================+
                  |
         Connected VPN Client
             (10.50.0.2)
                  |
-                 v HTTP GET http://10.50.0.1:5050
-          [WireGuard Manager]
-          (10.50.0.1:5050 ONLY)
+                 v HTTPS GET https://10.50.0.1:5443
+          [stunnel TLS Terminator]
+          (10.50.0.1:5443 ONLY - Self-Signed Cert with SAN)
+                 |
+                 v Internal Forward (127.0.0.1:5050 ONLY)
+          [WireGuard Manager PHP Backend]
+          (Unprivileged user: wireguard-manager)
 ```
 
 ### Security Boundary Model
-- **Exclusively Bound Socket**: The application binds strictly to `10.50.0.1:5050`. It never binds to `0.0.0.0`, `*`, `::`, or the public IP.
-- **Physical Unreachability**: Because no process listens on the public interface on port 5050, external traffic from the public Internet cannot reach the web application.
-- **Password Protected**: Web interface access requires administrator password authentication (customizable via the `ADMIN_PASSWORD` environment variable in the systemd service).
-- **Privilege Separation**: The web application runs under an unprivileged system user (`wireguard-manager`). WireGuard operations are executed via a dedicated, strictly validated helper script (`/usr/local/bin/wireguard-manager-helper`) via restricted sudo rules.
-- **Sensitive Key Protection**: Private keys are never logged in application logs, audit logs, or system journals.
+- **Exclusively Bound Socket & TLS**: `stunnel` terminates TLS bound strictly to `10.50.0.1:5443`. The PHP backend server binds strictly to loopback (`127.0.0.1:5050`). Neither service ever listens on `0.0.0.0`, `*`, `::`, or the public IP.
+- **Physical WAN Unreachability**: Because no listener exists on public WAN interfaces, external traffic from the public Internet cannot reach the management portal.
+- **Database-Backed Authentication**: All admin credentials are encrypted using standard `PASSWORD_BCRYPT` (cost 12) in SQLite (`admin_auth` table). No plain-text passwords or default hardcoded credentials exist.
+- **Brute-Force Rate Limiting**: Failed sign-in attempts are tracked per IP in `login_attempts`. Five failed attempts within 15 minutes trigger an automated 15-minute lockout with exponential sleep timing.
+- **CSRF & Security Headers**: Strict CSRF tokens protect all state-modifying requests (including disconnect, kick, revoke, enable, rekey, and password changes). Central security headers include `Content-Security-Policy`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, and `Referrer-Policy: strict-origin-when-cross-origin`.
+- **Privilege Separation**: The web application runs under an unprivileged system user (`wireguard-manager`). WireGuard operations are executed via a dedicated, strictly validated helper script (`/usr/local/bin/wireguard-manager-helper`) using restricted sudoers rules.
+- **Sensitive Key Protection**: Private keys are never logged in application logs, audit logs, or system journals. Helper utilities read private keys strictly via stdin to avoid exposing keys in `/proc/<pid>/cmdline`.
 
 ---
 
@@ -51,7 +57,9 @@ The server must already have:
 2. **WireGuard** installed (`wg` CLI available)
 3. **Active WireGuard interface `wg0`** with IP `10.50.0.1/24` assigned
 4. **PHP CLI** (>= 8.0) with `pdo_sqlite` support
-5. **qrencode** (recommended for mobile QR code generation: `dnf install qrencode`)
+5. **stunnel** (`dnf install stunnel`)
+6. **qrencode** (recommended for mobile QR code generation: `dnf install qrencode`)
+7. **OpenSSL** (for self-signed certificate generation)
 
 ---
 
@@ -65,22 +73,29 @@ git clone https://github.com/manjoor8/WireGaurd-WHM-Extension.git /root/wireguar
 cd /root/wireguard-manager-src
 
 # Execute installer
-chmod +x install.sh uninstall.sh bin/wireguard-manager-helper
+chmod +x install.sh uninstall.sh bin/wireguard-manager-helper bin/wireguard-manager-passwd
 sudo ./install.sh
 ```
 
 ### What `install.sh` Does:
 1. Detects OS and verifies AlmaLinux / RHEL compatibility.
 2. Checks that `wg` binary exists, `wg0` interface is active, and `10.50.0.1` is assigned to `wg0`.
-3. Verifies that port `5050` is not already occupied.
+3. Verifies that ports `5443` (TLS) and `5050` (backend) are available.
 4. Detects PHP CLI and ensures `pdo_sqlite` extension is loaded.
-5. Creates dedicated system user and group `wireguard-manager`.
-6. Copies application code to `/opt/wireguard-manager`.
-7. Installs the hardened helper to `/usr/local/bin/wireguard-manager-helper` (`0750`, `root:wireguard-manager`).
-8. Configures sudoers at `/etc/sudoers.d/wireguard-manager` (validating with `visudo -cf`).
-9. Initializes SQLite database at `/var/lib/wireguard-manager/wireguard.db` (`0660`).
-10. Installs, enables, and starts systemd service `wireguard-manager.service`.
-11. Performs automated socket binding and loopback health checks.
+5. Installs `stunnel` and `qrencode` packages if missing.
+6. Creates dedicated system user and group `wireguard-manager`.
+7. Copies application code to `/opt/wireguard-manager`.
+8. Installs the hardened helper to `/usr/local/bin/wireguard-manager-helper` (`0750`, `root:wireguard-manager`).
+9. Installs the password management CLI to `/usr/local/bin/wireguard-manager-passwd` (`0750`, `root:wireguard-manager`).
+10. Configures sudoers at `/etc/sudoers.d/wireguard-manager` (validating with `visudo -cf`).
+11. Generates a self-signed TLS certificate with Subject Alternative Name `IP:10.50.0.1` at `/etc/wireguard-manager/tls.crt`.
+12. Configures `stunnel` at `/etc/wireguard-manager/stunnel.conf`.
+13. Initializes SQLite database at `/var/lib/wireguard-manager/wireguard.db` and runs automated migrations.
+14. Prompts the administrator to securely set an initial password (or generates a random 20-character password in non-interactive environments).
+15. Installs, enables, and starts systemd services:
+    - `wireguard-manager.service` (PHP backend on `127.0.0.1:5050`)
+    - `wireguard-manager-tls.service` (stunnel TLS frontend on `10.50.0.1:5443`)
+16. Performs automated socket binding and TLS health checks.
 
 ---
 
@@ -90,15 +105,16 @@ sudo ./install.sh
 Run the following command on the server:
 
 ```bash
-ss -lntp | grep 5050
+ss -lntp | grep -E ':(5050|5443)'
 ```
 
 **Expected Output:**
 ```
-LISTEN 0 128 10.50.0.1:5050 0.0.0.0:* users:(("php",pid=...,fd=...))
+LISTEN 0 128 127.0.0.1:5050 0.0.0.0:* users:(("php",pid=...,fd=...))
+LISTEN 0 128 10.50.0.1:5443 0.0.0.0:* users:(("stunnel",pid=...,fd=...))
 ```
 
-> **CRITICAL CHECK**: Ensure that `0.0.0.0:5050`, `:::5050`, or `<PUBLIC_IP>:5050` are **NOT** listed.
+> **CRITICAL CHECK**: Ensure that `0.0.0.0:5050`, `0.0.0.0:5443`, `:::5050`, or `<PUBLIC_IP>` are **NOT** listed.
 
 ---
 
@@ -106,14 +122,14 @@ LISTEN 0 128 10.50.0.1:5050 0.0.0.0:* users:(("php",pid=...,fd=...))
 Connect your client machine to WireGuard (e.g., client IP `10.50.0.2`), then run:
 
 ```bash
-curl -I http://10.50.0.1:5050
+curl -k -I https://10.50.0.1:5443/login.php
 ```
 
 **Expected Output:**
 ```
 HTTP/1.1 200 OK
 ```
-Or open `http://10.50.0.1:5050` in your web browser. The WireGuard VPN Manager dashboard will load directly without login.
+Or open `https://10.50.0.1:5443` in your web browser. Accept the self-signed certificate warning to view the secure sign-in page.
 
 ---
 
@@ -121,7 +137,7 @@ Or open `http://10.50.0.1:5050` in your web browser. The WireGuard VPN Manager d
 Run locally on the server:
 
 ```bash
-curl -I http://10.50.0.1:5050
+curl -k -I https://10.50.0.1:5443/login.php
 ```
 
 **Expected Output:**
@@ -135,18 +151,39 @@ HTTP/1.1 200 OK
 From an external computer or phone **disconnected** from the VPN:
 
 ```bash
-curl --connect-timeout 5 http://<SERVER_PUBLIC_IP>:5050
+curl -k --connect-timeout 5 https://<SERVER_PUBLIC_IP>:5443
 ```
 
 **Expected Output:**
 ```
-curl: (7) Failed to connect to <SERVER_PUBLIC_IP> port 5050: Connection refused
+curl: (7) Failed to connect to <SERVER_PUBLIC_IP> port 5443: Connection refused
 # or Timeout (depending on host firewall)
 ```
 
 ---
 
-## 5. Privileged Helper Architecture
+## 5. Password Management
+
+### Change Password via Web Interface
+1. Sign in at `https://10.50.0.1:5443`.
+2. Navigate to **Settings** (`/settings.php`).
+3. Under **Change Administrator Password**, enter your current password, new password (min. 12 characters), and confirm.
+4. Click **Update Password**. All other existing sessions are immediately invalidated.
+
+### Reset Password from Server Terminal
+If you forget the password or need to reset it from SSH:
+
+```bash
+# Interactive prompt
+sudo /usr/local/bin/wireguard-manager-passwd
+
+# Or generate a new random password:
+sudo /usr/local/bin/wireguard-manager-passwd --random
+```
+
+---
+
+## 6. Privileged Helper Architecture
 
 The web process runs under the unprivileged `wireguard-manager` user. To perform WireGuard peer configuration without granting the web process root access, a controlled helper script is used:
 
@@ -159,7 +196,8 @@ The web process runs under the unprivileged `wireguard-manager` user. To perform
               |
               | 1. Strict regex input validation on public keys, IPs, and actions
               | 2. Rejects arbitrary commands / shells
-              | 3. Executes specific WireGuard command
+              | 3. Reads sensitive keys strictly via stdin
+              | 4. Executes specific WireGuard command
               v
 [/usr/bin/wg set wg0 ...]
 ```
@@ -173,31 +211,37 @@ The web process runs under the unprivileged `wireguard-manager` user. To perform
 - `traffic <public-key>`: Returns RX/TX counters.
 - `handshake <public-key>`: Returns last handshake timestamp.
 - `genkey`: Generates Curve25519 private key.
-- `pubkey`: Derives public key from private key.
+- `pubkey`: Derives public key from private key piped via stdin.
 
 ---
 
-## 6. Directory Structure
+## 7. Directory Structure
 
 ```
 /opt/wireguard-manager/
 ├── database/
-│   └── schema.sql                # SQLite schema
+│   └── schema.sql                # SQLite schema (clients, settings, audit_log, admin_auth, login_attempts)
 ├── public/                       # Web Document Root
 │   ├── index.php                 # Dashboard controller
+│   ├── login.php                 # Rate-limited authentication
+│   ├── logout.php                # POST-only sign out
 │   ├── clients.php               # Client list & actions
-│   ├── client.php                # Client details, .conf download & QR
+│   ├── client.php                # Client details, .conf download, kick & QR
 │   ├── add-client.php            # Add client form & keygen
-│   ├── settings.php              # Network & profile settings
+│   ├── settings.php              # Network settings & admin password change
 │   ├── logs.php                  # Audit log viewer
-│   ├── router.php                # Built-in PHP server router
+│   ├── router.php                # Hardened built-in PHP router
 │   └── assets/
 │       ├── css/
-│       │   └── app.css           # Clean, responsive CSS styling
+│       │   └── app.css           # Clean, mobile-friendly CSS styling
 │       └── js/
-│           └── app.js            # Vanilla JS (modals, copy, QR)
+│           └── app.js            # Vanilla JS (modals, copy, QR, event delegation)
 ├── src/                          # Application Services (Private)
-│   ├── bootstrap.php             # PSR-4 autoloader & view helpers
+│   ├── autoload.php              # Clean autoloader & HTML escaping helper
+│   ├── bootstrap.php             # Request guards (headers, Host check, session, CSRF)
+│   ├── Security.php              # Security headers, CSRF tokens, Host validation
+│   ├── Session.php               # Hardened cookie session management
+│   ├── AuthService.php           # DB bcrypt verification, lockout rate limiting
 │   ├── Database.php              # SQLite singleton & migrations
 │   ├── WireGuardService.php      # Helper bridge & parser
 │   ├── ClientService.php         # Client lifecycle & IP allocator
@@ -207,6 +251,7 @@ The web process runs under the unprivileged `wireguard-manager` user. To perform
 └── templates/                    # HTML UI Templates
     ├── header.php
     ├── footer.php
+    ├── login.php
     ├── dashboard.php
     ├── clients.php
     ├── client.php
@@ -217,26 +262,28 @@ The web process runs under the unprivileged `wireguard-manager` user. To perform
 
 ---
 
-## 7. Systemd Service Management
+## 8. Service Management
 
-To check service status:
+To check service statuses:
 ```bash
 systemctl status wireguard-manager.service
+systemctl status wireguard-manager-tls.service
 ```
 
 To view live service logs:
 ```bash
 journalctl -u wireguard-manager.service -f
+journalctl -u wireguard-manager-tls.service -f
 ```
 
 To restart the application:
 ```bash
-systemctl restart wireguard-manager.service
+systemctl restart wireguard-manager.service wireguard-manager-tls.service
 ```
 
 ---
 
-## 8. Uninstallation
+## 9. Uninstallation
 
 To safely remove the management application without affecting WireGuard, `wg0`, active peers, NAT, or firewalls:
 
@@ -244,10 +291,3 @@ To safely remove the management application without affecting WireGuard, `wg0`, 
 cd /root/wireguard-manager-src
 sudo ./uninstall.sh
 ```
-
----
-
-## 9. Future Roadmap / Authentication Notice
-
-> **TODO (Security):**
-> Authentication (passwords, 2FA, OAuth) MUST be added before exposing the management interface to any network beyond the trusted VPN interface.

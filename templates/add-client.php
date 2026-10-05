@@ -33,7 +33,7 @@ $formData = $formData ?? [];
         <?php endif; ?>
 
         <form method="POST" action="/add-client.php">
-            <input type="hidden" name="csrf_token" value="<?= h($csrfToken) ?>">
+            <?= csrf_field() ?>
 
             <div class="form-group">
                 <label for="name" class="form-label">Client Name <span class="text-danger">*</span></label>

@@ -1,8 +1,7 @@
 <?php
 declare(strict_types=1);
 
-session_start();
-
+// bootstrap enforces Host allow-list, hardened session and CSRF on POST
 require_once dirname(__DIR__) . '/src/bootstrap.php';
 
 use WireGuardManager\AuthService;

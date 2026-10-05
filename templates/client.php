@@ -19,24 +19,27 @@
             
             <?php if ($client['state'] === 'active'): ?>
                 <?php if ($client['is_online']): ?>
-                    <form method="POST" action="/client.php?id=<?= (int)$client['id'] ?>" class="inline-form" onsubmit="return confirm('Forcefully reset active session for <?= h($client['name']) ?>?');">
+                    <form method="POST" action="/client.php?id=<?= (int)$client['id'] ?>" class="inline-form" data-confirm="Forcefully reset active session for <?= h($client['name']) ?>?">
+                        <?= csrf_field() ?>
                         <input type="hidden" name="action" value="reset_session">
                         <button type="submit" class="btn btn-outline" style="color: #f59e0b; border-color: rgba(245, 158, 11, 0.5);" title="Kick / Reset Active Session">&#x26A1; Reset Session (Kick)</button>
                     </form>
                 <?php endif; ?>
 
-                <form method="POST" action="/client.php?id=<?= (int)$client['id'] ?>" class="inline-form" onsubmit="return confirm('Forcefully disconnect <?= h($client['name']) ?> from WireGuard?');">
+                <form method="POST" action="/client.php?id=<?= (int)$client['id'] ?>" class="inline-form" data-confirm="Forcefully disconnect <?= h($client['name']) ?> from WireGuard?">
+                    <?= csrf_field() ?>
                     <input type="hidden" name="action" value="disconnect">
                     <button type="submit" class="btn btn-warning">&#x23FB; Force Disconnect</button>
                 </form>
             <?php elseif ($client['state'] === 'disabled'): ?>
                 <form method="POST" action="/client.php?id=<?= (int)$client['id'] ?>" class="inline-form">
+                    <?= csrf_field() ?>
                     <input type="hidden" name="action" value="enable">
                     <button type="submit" class="btn btn-success">&#x2714; Connect Client</button>
                 </form>
             <?php endif; ?>
 
-            <button type="button" class="btn btn-danger" onclick="openRevokeModal(<?= (int)$client['id'] ?>, '<?= h($client['name']) ?>')">Revoke</button>
+            <button type="button" class="btn btn-danger btn-revoke" data-client-id="<?= (int)$client['id'] ?>" data-client-name="<?= h($client['name']) ?>">Revoke</button>
         <?php else: ?>
             <span class="badge badge-danger badge-lg">Revoked Client</span>
         <?php endif; ?>
@@ -129,6 +132,7 @@
                             This client was auto-imported from the WireGuard interface without a private key (private keys reside on client devices).<br><br>
                             To scan and connect a new mobile phone or device with this client's IP (<code><?= h($client['vpn_ip']) ?></code>), generate a fresh key pair:
                             <form method="POST" action="/client.php?id=<?= (int)$client['id'] ?>" class="mt-3">
+                                <?= csrf_field() ?>
                                 <input type="hidden" name="action" value="rekey">
                                 <button type="submit" class="btn btn-primary btn-sm">&#x21bb; Generate New Key Pair &amp; QR Code</button>
                             </form>
@@ -156,7 +160,7 @@
             <div class="card-header flex-between">
                 <h2 class="card-title">Client Configuration (.conf)</h2>
                 <?php if ($client['state'] !== 'revoked'): ?>
-                    <button type="button" class="btn btn-secondary btn-sm" onclick="copyConfig()">Copy Config</button>
+                    <button type="button" class="btn btn-secondary btn-sm" id="btnCopyConfig">Copy Config</button>
                 <?php endif; ?>
             </div>
             <div class="card-body">
@@ -181,7 +185,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h3 class="modal-title">Confirm Revocation</h3>
-                <button type="button" class="modal-close" onclick="closeModal('revokeModal')">&times;</button>
+                <button type="button" class="modal-close" data-close-modal="revokeModal">&times;</button>
             </div>
             <div class="modal-body">
                 <p>Are you sure you want to revoke <strong id="revokeClientName"></strong>?</p>
@@ -190,9 +194,9 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" onclick="closeModal('revokeModal')">Cancel</button>
+                <button type="button" class="btn btn-secondary" data-close-modal="revokeModal">Cancel</button>
                 <form method="POST" action="/client.php?id=<?= (int)$client['id'] ?>" class="inline-form">
-                    <input type="hidden" name="csrf_token" value="<?= h($csrfToken) ?>">
+                    <?= csrf_field() ?>
                     <input type="hidden" name="action" value="revoke">
                     <button type="submit" class="btn btn-danger">Confirm Revoke</button>
                 </form>

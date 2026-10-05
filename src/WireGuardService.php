@@ -243,11 +243,19 @@ class WireGuardService
             }
         }
 
-        $pubRandom = random_bytes(32);
-        return [
-            'private_key' => $privateKey,
-            'public_key' => base64_encode($pubRandom),
-        ];
+        if (function_exists('sodium_crypto_scalarmult_base')) {
+            try {
+                $rawPub = sodium_crypto_scalarmult_base($random);
+                return [
+                    'private_key' => $privateKey,
+                    'public_key' => base64_encode($rawPub),
+                ];
+            } catch (\Throwable $e) {
+                // fall through
+            }
+        }
+
+        throw new RuntimeException("WireGuard key derivation failed: neither '/usr/bin/wg' nor sodium extension is available to calculate the Curve25519 public key.");
     }
 
     public function validatePublicKey(string $key): void

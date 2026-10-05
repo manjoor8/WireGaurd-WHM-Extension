@@ -17,28 +17,19 @@ if (is_dir($sessionDir) && is_writable($sessionDir)) {
     @ini_set('session.save_path', $sessionDir);
 }
 
-// Autoloader
-spl_autoload_register(function (string $class): void {
-    $prefix = 'WireGuardManager\\';
-    $baseDir = __DIR__ . '/';
+require_once __DIR__ . '/autoload.php';
 
-    $len = strlen($prefix);
-    if (strncmp($prefix, $class, $len) !== 0) {
-        return;
-    }
+use WireGuardManager\Security;
+use WireGuardManager\Session;
 
-    $relativeClass = substr($class, $len);
-    $file = $baseDir . str_replace('\\', '/', $relativeClass) . '.php';
-
-    if (file_exists($file)) {
-        require_once $file;
-    }
-});
-
-// Helper functions for templates
-if (!function_exists('h')) {
-    function h(?string $str): string
-    {
-        return htmlspecialchars($str ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-    }
+// Web request guards. Order matters:
+//  1. security headers on every response
+//  2. reject foreign Host headers (DNS rebinding) before touching the session
+//  3. start the hardened session
+//  4. reject POSTs without a valid CSRF token
+if (PHP_SAPI !== 'cli') {
+    Security::sendHeaders();
+    Security::enforceHost();
+    Session::start();
+    Security::enforceCsrf();
 }

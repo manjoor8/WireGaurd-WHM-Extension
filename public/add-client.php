@@ -1,10 +1,7 @@
 <?php
 declare(strict_types=1);
 
-if (session_status() === PHP_SESSION_NONE) {
-    @session_start();
-}
-
+// bootstrap enforces Host allow-list, hardened session and CSRF on POST
 require_once dirname(__DIR__) . '/src/bootstrap.php';
 
 use WireGuardManager\AuthService;
@@ -12,10 +9,9 @@ use WireGuardManager\WireGuardService;
 use WireGuardManager\ConfigService;
 use WireGuardManager\ClientService;
 use WireGuardManager\Database;
+use WireGuardManager\Session;
 
 AuthService::requireAuth();
-
-$csrfToken = $_SESSION['csrf_token'] ?? '';
 
 $db = Database::getConnection();
 $wg = new WireGuardService();
@@ -54,8 +50,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($errors)) {
         try {
             $created = $clientService->createClient($name, $description ?: null, $vpnIp);
-            $_SESSION['flash_success'] = "WireGuard client '{$name}' created successfully with IP {$created['vpn_ip']}!";
-            header("Location: /client.php?id=" . (int)$created['id'] . "&msg=" . urlencode("Client '{$name}' created successfully."));
+            Session::flash('success', "WireGuard client '{$name}' created successfully with IP {$created['vpn_ip']}!");
+            header("Location: /client.php?id=" . (int)$created['id']);
             exit;
         } catch (\Throwable $e) {
             $errors[] = "Error creating client: " . $e->getMessage();

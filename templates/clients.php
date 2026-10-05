@@ -71,20 +71,23 @@
                                         
                                         <?php if ($c['state'] === 'active'): ?>
                                             <?php if ($c['is_online']): ?>
-                                                <form method="POST" action="/clients.php" class="inline-form" onsubmit="return confirm('Forcefully reset active tunnel session for <?= h($c['name']) ?>?');">
+                                                <form method="POST" action="/clients.php" class="inline-form" data-confirm="Forcefully reset active tunnel session for <?= h($c['name']) ?>?">
+                                                    <?= csrf_field() ?>
                                                     <input type="hidden" name="action" value="reset_session">
                                                     <input type="hidden" name="client_id" value="<?= (int)$c['id'] ?>">
                                                     <button type="submit" class="btn btn-xs btn-outline" style="color: #f59e0b; border-color: rgba(245, 158, 11, 0.5);" title="Kick / Reset Active Session">Kick</button>
                                                 </form>
                                             <?php endif; ?>
 
-                                            <form method="POST" action="/clients.php" class="inline-form" onsubmit="return confirm('Forcefully disconnect <?= h($c['name']) ?> from WireGuard?');">
+                                            <form method="POST" action="/clients.php" class="inline-form" data-confirm="Forcefully disconnect <?= h($c['name']) ?> from WireGuard?">
+                                                <?= csrf_field() ?>
                                                 <input type="hidden" name="action" value="disconnect">
                                                 <input type="hidden" name="client_id" value="<?= (int)$c['id'] ?>">
                                                 <button type="submit" class="btn btn-xs btn-warning" title="Forcefully disconnect peer from WireGuard">Disconnect</button>
                                             </form>
                                         <?php elseif ($c['state'] === 'disabled'): ?>
                                             <form method="POST" action="/clients.php" class="inline-form">
+                                                <?= csrf_field() ?>
                                                 <input type="hidden" name="action" value="enable">
                                                 <input type="hidden" name="client_id" value="<?= (int)$c['id'] ?>">
                                                 <button type="submit" class="btn btn-xs btn-success" title="Allow client to connect">Connect</button>
@@ -111,7 +114,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h3 class="modal-title">Confirm Client Revocation</h3>
-                <button type="button" class="modal-close" onclick="closeModal('revokeModal')">&times;</button>
+                <button type="button" class="modal-close" data-close-modal="revokeModal">&times;</button>
             </div>
             <div class="modal-body">
                 <p>Are you sure you want to revoke client <strong id="revokeClientName"></strong>?</p>
@@ -120,9 +123,9 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" onclick="closeModal('revokeModal')">Cancel</button>
+                <button type="button" class="btn btn-secondary" data-close-modal="revokeModal">Cancel</button>
                 <form method="POST" action="/clients.php" class="inline-form">
-                    <input type="hidden" name="csrf_token" value="<?= h($csrfToken) ?>">
+                    <?= csrf_field() ?>
                     <input type="hidden" name="action" value="revoke">
                     <input type="hidden" name="client_id" id="revokeClientId" value="">
                     <button type="submit" class="btn btn-danger">Confirm Revoke</button>
@@ -138,7 +141,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h3 class="modal-title">WireGuard QR Code &bull; <span id="qrClientName"></span></h3>
-                <button type="button" class="modal-close" onclick="closeModal('qrModal')">&times;</button>
+                <button type="button" class="modal-close" data-close-modal="qrModal">&times;</button>
             </div>
             <div class="modal-body text-center">
                 <div id="qrImageContainer" class="qr-container">
@@ -147,7 +150,7 @@
                 <p class="text-muted text-xs mt-3">Scan this code using the official WireGuard mobile application (iOS/Android).</p>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" onclick="closeModal('qrModal')">Close</button>
+                <button type="button" class="btn btn-secondary" data-close-modal="qrModal">Close</button>
             </div>
         </div>
     </div>

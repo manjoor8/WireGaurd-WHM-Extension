@@ -1,36 +1,50 @@
 <?php
 declare(strict_types=1);
 
-if (session_status() === PHP_SESSION_NONE) {
-    @session_start();
-}
-
+// bootstrap enforces Host allow-list, hardened session and CSRF on POST
 require_once dirname(__DIR__) . '/src/bootstrap.php';
 
 use WireGuardManager\AuthService;
 use WireGuardManager\ConfigService;
 use WireGuardManager\AuditService;
 use WireGuardManager\Database;
+use WireGuardManager\Session;
 
 AuthService::requireAuth();
-
-$csrfToken = $_SESSION['csrf_token'] ?? '';
 
 $db = Database::getConnection();
 $configService = new ConfigService($db);
 $audit = new AuditService($db);
 
-$errors = [];
+$settingsErrors = [];
+$passwordErrors = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $result = $configService->updateSettings($_POST);
-    if ($result['success']) {
-        $audit->log('UPDATE_SETTINGS', 'Settings updated');
-        $_SESSION['flash_success'] = 'Settings saved successfully.';
-        header('Location: /settings.php?msg=' . urlencode('Settings saved successfully.'));
-        exit;
+    $action = (string)($_POST['action'] ?? 'update_settings');
+
+    if ($action === 'change_password') {
+        $current = (string)($_POST['current_password'] ?? '');
+        $new = (string)($_POST['new_password'] ?? '');
+        $confirm = (string)($_POST['confirm_password'] ?? '');
+
+        $err = AuthService::changePassword($current, $new, $confirm);
+        if ($err === null) {
+            Session::flash('success', 'Administrator password changed successfully.');
+            header('Location: /settings.php');
+            exit;
+        } else {
+            $passwordErrors[] = $err;
+        }
     } else {
-        $errors = $result['errors'];
+        $result = $configService->updateSettings($_POST);
+        if ($result['success']) {
+            $audit->log('UPDATE_SETTINGS', 'Settings updated');
+            Session::flash('success', 'Settings saved successfully.');
+            header('Location: /settings.php');
+            exit;
+        } else {
+            $settingsErrors = $result['errors'];
+        }
     }
 }
 

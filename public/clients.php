@@ -1,10 +1,7 @@
 <?php
 declare(strict_types=1);
 
-if (session_status() === PHP_SESSION_NONE) {
-    @session_start();
-}
-
+// bootstrap enforces Host allow-list, hardened session and CSRF on POST
 require_once dirname(__DIR__) . '/src/bootstrap.php';
 
 use WireGuardManager\AuthService;
@@ -12,26 +9,23 @@ use WireGuardManager\WireGuardService;
 use WireGuardManager\ConfigService;
 use WireGuardManager\ClientService;
 use WireGuardManager\Database;
+use WireGuardManager\Session;
 
 AuthService::requireAuth();
-
-$csrfToken = $_SESSION['csrf_token'] ?? '';
 
 $db = Database::getConnection();
 $wg = new WireGuardService();
 $configService = new ConfigService($db);
 $clientService = new ClientService($db, $wg, $configService);
 
-// Handle POST actions (disable, enable, revoke)
+// Handle POST actions (disconnect, kick, enable, revoke)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $action = $_POST['action'] ?? '';
+    $action = (string)($_POST['action'] ?? '');
     $clientId = (int)($_POST['client_id'] ?? 0);
-    $msg = '';
-    $error = '';
 
     try {
         if ($action === 'disconnect' || $action === 'disable') {
-            $clientService->disableClient($clientId);
+            $clientService->disconnectClient($clientId);
             $msg = "Client has been forcefully disconnected from WireGuard.";
         } elseif ($action === 'reset_session' || $action === 'kick') {
             $clientService->resetSession($clientId);
@@ -42,16 +36,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($action === 'revoke') {
             $clientService->revokeClient($clientId);
             $msg = "Client has been permanently revoked.";
+        } else {
+            throw new \InvalidArgumentException('Unknown action.');
         }
-        $_SESSION['flash_success'] = $msg;
-        header('Location: /clients.php?msg=' . urlencode($msg));
-        exit;
+        Session::flash('success', $msg);
     } catch (\Throwable $e) {
-        $error = "Action failed: " . $e->getMessage();
-        $_SESSION['flash_error'] = $error;
-        header('Location: /clients.php?error=' . urlencode($error));
-        exit;
+        Session::flash('error', "Action failed: " . $e->getMessage());
     }
+
+    header('Location: /clients.php');
+    exit;
 }
 
 $clients = $clientService->listClients();

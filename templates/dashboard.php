@@ -149,13 +149,15 @@
                                     <a href="/client.php?id=<?= (int)$c['id'] ?>" class="btn btn-xs btn-outline">View</a>
                                     <a href="/client.php?id=<?= (int)$c['id'] ?>&download=1" class="btn btn-xs btn-outline">Config</a>
                                     <?php if ($c['state'] === 'active'): ?>
-                                        <form method="POST" action="/clients.php" class="inline-form" onsubmit="return confirm('Forcefully disconnect <?= h($c['name']) ?> from WireGuard?');">
+                                        <form method="POST" action="/clients.php" class="inline-form" data-confirm="Forcefully disconnect <?= h($c['name']) ?> from WireGuard?">
+                                            <?= csrf_field() ?>
                                             <input type="hidden" name="action" value="disconnect">
                                             <input type="hidden" name="client_id" value="<?= (int)$c['id'] ?>">
                                             <button type="submit" class="btn btn-xs btn-warning" title="Forcefully disconnect">Disconnect</button>
                                         </form>
                                     <?php elseif ($c['state'] === 'disabled'): ?>
                                         <form method="POST" action="/clients.php" class="inline-form">
+                                            <?= csrf_field() ?>
                                             <input type="hidden" name="action" value="enable">
                                             <input type="hidden" name="client_id" value="<?= (int)$c['id'] ?>">
                                             <button type="submit" class="btn btn-xs btn-success" title="Connect client">Connect</button>

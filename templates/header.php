@@ -6,11 +6,16 @@
 $pageTitle = $pageTitle ?? 'WireGuard VPN Manager';
 $activeNav = $activeNav ?? 'dashboard';
 
-$flashSuccess = $_SESSION['flash_success'] ?? $_GET['msg'] ?? null;
+// Session-only flash messages (query parameters ignored to prevent injection)
+$flashSuccess = $_SESSION['flash_success'] ?? null;
 unset($_SESSION['flash_success']);
 
-$flashError = $_SESSION['flash_error'] ?? $_GET['error'] ?? null;
+$flashError = $_SESSION['flash_error'] ?? null;
 unset($_SESSION['flash_error']);
+
+$serverPort = \WireGuardManager\Security::isHttps()
+    ? \WireGuardManager\Security::TLS_PORT
+    : \WireGuardManager\Security::PLAIN_PORT;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -34,7 +39,7 @@ unset($_SESSION['flash_error']);
                         </svg>
                         <span class="brand-title">WireGuard Manager</span>
                     </a>
-                    <span class="badge badge-server">10.50.0.1:5050 &bull; wg0</span>
+                    <span class="badge badge-server">10.50.0.1:<?= h($serverPort) ?> &bull; wg0</span>
                 </div>
                 <button type="button" class="nav-toggle" id="navToggle" aria-label="Toggle navigation menu" aria-expanded="false">
                     <span class="nav-toggle-bar"></span>
@@ -48,7 +53,10 @@ unset($_SESSION['flash_error']);
                 <a href="/add-client.php" class="nav-item <?= $activeNav === 'add-client' ? 'active' : '' ?>">Add Client</a>
                 <a href="/settings.php" class="nav-item <?= $activeNav === 'settings' ? 'active' : '' ?>">Settings</a>
                 <a href="/logs.php" class="nav-item <?= $activeNav === 'logs' ? 'active' : '' ?>">Audit Logs</a>
-                <a href="/logout.php" class="nav-item nav-item-logout" title="Sign out of WireGuard Manager">Logout</a>
+                <form method="POST" action="/logout.php" class="inline-form" style="display: inline-flex;">
+                    <?= csrf_field() ?>
+                    <button type="submit" class="nav-item nav-item-logout" title="Sign out of WireGuard Manager" style="background: none; border: none; cursor: pointer; width: 100%; text-align: left;">Logout</button>
+                </form>
             </nav>
         </div>
     </header>

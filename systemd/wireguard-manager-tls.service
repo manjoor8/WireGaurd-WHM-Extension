@@ -1,0 +1,15 @@
+[Unit]
+Description=WireGuard VPN Manager TLS Terminator (stunnel)
+Documentation=https://github.com/manjoor8/WireGaurd-WHM-Extension
+After=network-online.target wireguard-manager.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/stunnel /etc/wireguard-manager/stunnel.conf
+Restart=on-failure
+RestartSec=3s
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -71,5 +71,34 @@ class Database
                 $pdo->exec($sql);
             }
         }
+
+        self::migrate($pdo);
+    }
+
+    /**
+     * Idempotent, versioned migrations for databases created by older releases.
+     * Tracked with PRAGMA user_version.
+     */
+    private static function migrate(PDO $pdo): void
+    {
+        $version = (int)$pdo->query('PRAGMA user_version')->fetchColumn();
+
+        if ($version < 1) {
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS admin_auth (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    password_hash TEXT NOT NULL,
+                    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE IF NOT EXISTS login_attempts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ip_address TEXT NOT NULL,
+                    success INTEGER NOT NULL DEFAULT 0,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE INDEX IF NOT EXISTS idx_login_attempts_ip_time ON login_attempts(ip_address, created_at);
+            ");
+            $pdo->exec('PRAGMA user_version = 1');
+        }
     }
 }

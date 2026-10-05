@@ -1,0 +1,163 @@
+#!/usr/bin/env php
+<?php
+declare(strict_types=1);
+
+/**
+ * WireGuard VPN Manager - Administrator Password Management Utility
+ *
+ * Usage:
+ *   wireguard-manager-passwd [OPTIONS]
+ *
+ * Options:
+ *   -r, --random           Generate and set a random cryptographically secure 20-character password
+ *   -c, --check            Check whether an administrator password is configured
+ *   --stdin                Read password from standard input (single line)
+ *   --password <pwd>       Set specific password directly (useful for non-interactive automation)
+ *   -h, --help             Display this help message
+ */
+
+if (php_sapi_name() !== 'cli') {
+    http_response_code(403);
+    echo "This utility can only be executed from the command line.\n";
+    exit(1);
+}
+
+require_once dirname(__DIR__) . '/src/autoload.php';
+
+use WireGuardManager\AuthService;
+use WireGuardManager\Database;
+
+// Support custom database path if passed as env or flag
+$dbPath = getenv('DATABASE_PATH') ?: '/var/lib/wireguard-manager/wireguard.db';
+if (!file_exists(dirname($dbPath))) {
+    $fallback = dirname(__DIR__) . '/storage/wireguard.db';
+    if (file_exists(dirname($fallback))) {
+        $dbPath = $fallback;
+    }
+}
+Database::setPath($dbPath);
+
+// Parse CLI options
+$args = array_slice($argv, 1);
+$isRandom = false;
+$stdinPassword = false;
+$checkStatus = false;
+$specifiedPassword = null;
+
+for ($i = 0; $i < count($args); $i++) {
+    $arg = $args[$i];
+    if ($arg === '--random' || $arg === '-r') {
+        $isRandom = true;
+    } elseif ($arg === '--stdin') {
+        $stdinPassword = true;
+    } elseif ($arg === '--check' || $arg === '-c') {
+        $checkStatus = true;
+    } elseif ($arg === '--password' && isset($args[$i + 1])) {
+        $specifiedPassword = $args[++$i];
+    } elseif ($arg === '--help' || $arg === '-h') {
+        echo "WireGuard Manager Password Utility\n";
+        echo "Usage: wireguard-manager-passwd [OPTIONS]\n\n";
+        echo "Options:\n";
+        echo "  -r, --random           Generate and set a random cryptographically secure 20-character password\n";
+        echo "  -c, --check            Check whether an administrator password is configured\n";
+        echo "  --stdin                Read password from standard input (single line)\n";
+        echo "  --password <pwd>       Set specific password directly\n";
+        echo "  -h, --help             Display this help message\n\n";
+        echo "If no options are given, an interactive password prompt will appear.\n";
+        exit(0);
+    }
+}
+
+if ($checkStatus) {
+    if (AuthService::hasPassword()) {
+        echo "Configured\n";
+        exit(0);
+    } else {
+        echo "Not configured\n";
+        exit(1);
+    }
+}
+
+$password = null;
+
+if ($isRandom) {
+    // Generate secure random alphanumeric password with symbols
+    $chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#%^&*()-_=+';
+    $password = '';
+    $max = strlen($chars) - 1;
+    for ($i = 0; $i < 20; $i++) {
+        $password .= $chars[random_int(0, $max)];
+    }
+} elseif ($specifiedPassword !== null) {
+    $password = $specifiedPassword;
+} elseif ($stdinPassword) {
+    $password = trim((string)fgets(STDIN));
+} else {
+    // Interactive prompt
+    echo "\n";
+    echo "====================================================\n";
+    echo "  WireGuard Manager - Administrator Password Setup  \n";
+    echo "====================================================\n";
+    echo "Minimum length: " . AuthService::MIN_LENGTH . " characters.\n\n";
+
+    function readSilentPassword(string $prompt): string {
+        echo $prompt;
+        if (strtoupper(substr(PHP_OS, 0, 3)) !== 'WIN') {
+            $currentSettings = shell_exec('stty -g 2>/dev/null');
+            shell_exec('stty -echo 2>/dev/null');
+            $pwd = trim((string)fgets(STDIN));
+            if ($currentSettings) {
+                shell_exec("stty $currentSettings 2>/dev/null");
+            } else {
+                shell_exec('stty echo 2>/dev/null');
+            }
+            echo "\n";
+            return $pwd;
+        } else {
+            return trim((string)fgets(STDIN));
+        }
+    }
+
+    $attempts = 0;
+    while ($attempts < 3) {
+        $p1 = readSilentPassword("Enter new administrator password: ");
+        $validationErr = AuthService::validateNewPassword($p1);
+        if ($validationErr !== null) {
+            echo "Error: {$validationErr}\n\n";
+            $attempts++;
+            continue;
+        }
+
+        $p2 = readSilentPassword("Confirm administrator password: ");
+        if ($p1 !== $p2) {
+            echo "Error: Passwords do not match. Please try again.\n\n";
+            $attempts++;
+            continue;
+        }
+
+        $password = $p1;
+        break;
+    }
+
+    if ($password === null) {
+        fwrite(STDERR, "Aborted: too many failed attempts.\n");
+        exit(1);
+    }
+}
+
+try {
+    AuthService::setPassword($password);
+    AuthService::resetLockouts();
+
+    echo "[OK] Administrator password updated successfully.\n";
+    if ($isRandom) {
+        echo "----------------------------------------------------\n";
+        echo "Generated Password: {$password}\n";
+        echo "Save this password in a secure password manager.\n";
+        echo "----------------------------------------------------\n";
+    }
+    exit(0);
+} catch (\Throwable $e) {
+    fwrite(STDERR, "Error setting password: " . $e->getMessage() . "\n");
+    exit(1);
+}

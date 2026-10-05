@@ -1,28 +1,30 @@
 <?php
 /**
  * @var array $settings
- * @var string $csrfToken
- * @var array $errors
+ * @var array $settingsErrors
+ * @var array $passwordErrors
  */
-$errors = $errors ?? [];
+$settingsErrors = $settingsErrors ?? [];
+$passwordErrors = $passwordErrors ?? [];
 ?>
 
 <div class="page-header">
     <div>
         <h1 class="page-title">Settings</h1>
-        <p class="page-subtitle">Configure WireGuard client profile defaults and network properties</p>
+        <p class="page-subtitle">Configure WireGuard client profile defaults and administrator credentials</p>
     </div>
 </div>
 
-<div class="card max-w-2xl">
+<!-- Change Administrator Password Card -->
+<div class="card max-w-2xl mb-4">
     <div class="card-header">
-        <h2 class="card-title">WireGuard &amp; Client Configuration Defaults</h2>
+        <h2 class="card-title">Change Administrator Password</h2>
     </div>
     <div class="card-body">
-        <?php if (!empty($errors)): ?>
+        <?php if (!empty($passwordErrors)): ?>
             <div class="alert alert-danger mb-4">
                 <ul class="error-list">
-                    <?php foreach ($errors as $error): ?>
+                    <?php foreach ($passwordErrors as $error): ?>
                         <li><?= h($error) ?></li>
                     <?php endforeach; ?>
                 </ul>
@@ -30,7 +32,52 @@ $errors = $errors ?? [];
         <?php endif; ?>
 
         <form method="POST" action="/settings.php">
-            <input type="hidden" name="csrf_token" value="<?= h($csrfToken) ?>">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="change_password">
+
+            <div class="form-group">
+                <label for="current_password" class="form-label">Current Password <span class="text-danger">*</span></label>
+                <input type="password" id="current_password" name="current_password" class="form-control" autocomplete="current-password" required maxlength="72">
+            </div>
+
+            <div class="grid-2-col">
+                <div class="form-group">
+                    <label for="new_password" class="form-label">New Password <span class="text-danger">*</span></label>
+                    <input type="password" id="new_password" name="new_password" class="form-control" autocomplete="new-password" required minlength="12" maxlength="72">
+                    <p class="form-help">Minimum 12 characters.</p>
+                </div>
+                <div class="form-group">
+                    <label for="confirm_password" class="form-label">Confirm New Password <span class="text-danger">*</span></label>
+                    <input type="password" id="confirm_password" name="confirm_password" class="form-control" autocomplete="new-password" required minlength="12" maxlength="72">
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Update Password</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- WireGuard Client Defaults Card -->
+<div class="card max-w-2xl">
+    <div class="card-header">
+        <h2 class="card-title">WireGuard &amp; Client Configuration Defaults</h2>
+    </div>
+    <div class="card-body">
+        <?php if (!empty($settingsErrors)): ?>
+            <div class="alert alert-danger mb-4">
+                <ul class="error-list">
+                    <?php foreach ($settingsErrors as $error): ?>
+                        <li><?= h($error) ?></li>
+                    <?php endforeach; ?>
+                </ul>
+            </div>
+        <?php endif; ?>
+
+        <form method="POST" action="/settings.php">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="update_settings">
 
             <h3 class="section-title">Network Architecture (V1 Locked)</h3>
             <div class="grid-2-col mb-4">

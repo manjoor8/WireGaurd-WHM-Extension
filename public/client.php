@@ -1,10 +1,7 @@
 <?php
 declare(strict_types=1);
 
-if (session_status() === PHP_SESSION_NONE) {
-    @session_start();
-}
-
+// bootstrap enforces Host allow-list, hardened session and CSRF on POST
 require_once dirname(__DIR__) . '/src/bootstrap.php';
 
 use WireGuardManager\AuthService;
@@ -13,10 +10,9 @@ use WireGuardManager\ConfigService;
 use WireGuardManager\ClientService;
 use WireGuardManager\QRService;
 use WireGuardManager\Database;
+use WireGuardManager\Session;
 
 AuthService::requireAuth();
-
-$csrfToken = $_SESSION['csrf_token'] ?? '';
 
 $db = Database::getConnection();
 $wg = new WireGuardService();
@@ -28,8 +24,8 @@ $clientId = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
 $client = $clientService->getClient($clientId);
 
 if (!$client) {
-    $_SESSION['flash_error'] = "Client not found.";
-    header('Location: /clients.php?error=' . urlencode("Client not found."));
+    Session::flash('error', 'Client not found.');
+    header('Location: /clients.php');
     exit;
 }
 
@@ -80,13 +76,14 @@ if (!empty($_GET['qr'])) {
 
 // Handle POST actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $action = $_POST['action'] ?? '';
-    $msg = '';
-    $error = '';
+    $action = (string)($_POST['action'] ?? '');
     try {
-        if ($action === 'disable') {
-            $clientService->disableClient($clientId);
-            $msg = "Client has been disabled.";
+        if ($action === 'disconnect' || $action === 'disable') {
+            $clientService->disconnectClient($clientId);
+            $msg = "Client has been forcefully disconnected from WireGuard.";
+        } elseif ($action === 'reset_session' || $action === 'kick') {
+            $clientService->resetSession($clientId);
+            $msg = "Active session was forcefully terminated (kicked).";
         } elseif ($action === 'enable') {
             $clientService->enableClient($clientId);
             $msg = "Client has been enabled.";
@@ -96,16 +93,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($action === 'rekey') {
             $clientService->rekeyClient($clientId);
             $msg = "New Curve25519 key pair generated. Mobile QR barcode is now active!";
+        } else {
+            throw new \InvalidArgumentException('Unknown action.');
         }
-        $_SESSION['flash_success'] = $msg;
-        header("Location: /client.php?id={$clientId}&msg=" . urlencode($msg));
-        exit;
+        Session::flash('success', $msg);
     } catch (\Throwable $e) {
-        $error = "Action failed: " . $e->getMessage();
-        $_SESSION['flash_error'] = $error;
-        header("Location: /client.php?id={$clientId}&error=" . urlencode($error));
-        exit;
+        Session::flash('error', "Action failed: " . $e->getMessage());
     }
+    header("Location: /client.php?id={$clientId}");
+    exit;
 }
 
 $configText = '';

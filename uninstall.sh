@@ -11,9 +11,15 @@ APP_NAME="wireguard-manager"
 APP_DIR="/opt/${APP_NAME}"
 DATA_DIR="/var/lib/${APP_NAME}"
 LOG_DIR="/var/log/${APP_NAME}"
+TLS_DIR="/etc/${APP_NAME}"
+
 SERVICE_NAME="${APP_NAME}.service"
+TLS_SERVICE_NAME="${APP_NAME}-tls.service"
 SYSTEMD_FILE="/etc/systemd/system/${SERVICE_NAME}"
+TLS_SYSTEMD_FILE="/etc/systemd/system/${TLS_SERVICE_NAME}"
+
 HELPER_BIN="/usr/local/bin/wireguard-manager-helper"
+PASSWD_BIN="/usr/local/bin/wireguard-manager-passwd"
 SUDOERS_FILE="/etc/sudoers.d/${APP_NAME}"
 
 COLOR_RED="\033[0;31m"
@@ -35,24 +41,28 @@ echo " WireGuard VPN Manager - Uninstaller"
 echo " (Preserves WireGuard interface wg0, existing peers, and network rules)"
 echo "=================================================================="
 
-# 1. Stop and Disable Service
-if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
-    log_info "Stopping ${SERVICE_NAME}..."
-    systemctl stop "$SERVICE_NAME"
-fi
+# 1. Stop and Disable Services
+for s in "$TLS_SERVICE_NAME" "$SERVICE_NAME"; do
+    if systemctl is-active --quiet "$s" 2>/dev/null; then
+        log_info "Stopping ${s}..."
+        systemctl stop "$s"
+    fi
 
-if systemctl is-enabled --quiet "$SERVICE_NAME" 2>/dev/null; then
-    log_info "Disabling ${SERVICE_NAME}..."
-    systemctl disable "$SERVICE_NAME"
-fi
+    if systemctl is-enabled --quiet "$s" 2>/dev/null; then
+        log_info "Disabling ${s}..."
+        systemctl disable "$s"
+    fi
+done
 
-# 2. Remove Systemd Unit
-if [[ -f "$SYSTEMD_FILE" ]]; then
-    log_info "Removing systemd service unit..."
-    rm -f "$SYSTEMD_FILE"
-    systemctl daemon-reload
-    log_ok "Removed ${SYSTEMD_FILE}."
-fi
+# 2. Remove Systemd Units
+for f in "$TLS_SYSTEMD_FILE" "$SYSTEMD_FILE"; do
+    if [[ -f "$f" ]]; then
+        log_info "Removing systemd service unit ${f}..."
+        rm -f "$f"
+    fi
+done
+systemctl daemon-reload
+log_ok "Removed systemd units."
 
 # 3. Remove Sudoers File
 if [[ -f "$SUDOERS_FILE" ]]; then
@@ -61,12 +71,14 @@ if [[ -f "$SUDOERS_FILE" ]]; then
     log_ok "Removed ${SUDOERS_FILE}."
 fi
 
-# 4. Remove Helper Binary
-if [[ -f "$HELPER_BIN" ]]; then
-    log_info "Removing privileged helper..."
-    rm -f "$HELPER_BIN"
-    log_ok "Removed ${HELPER_BIN}."
-fi
+# 4. Remove Binaries
+for b in "$HELPER_BIN" "$PASSWD_BIN"; do
+    if [[ -f "$b" ]]; then
+        log_info "Removing ${b}..."
+        rm -f "$b"
+        log_ok "Removed ${b}."
+    fi
+done
 
 # 5. Remove Application Code Directory
 if [[ -d "$APP_DIR" ]]; then
@@ -75,7 +87,14 @@ if [[ -d "$APP_DIR" ]]; then
     log_ok "Removed ${APP_DIR}."
 fi
 
-# 6. Database preservation / removal
+# 6. Remove TLS directory
+if [[ -d "$TLS_DIR" ]]; then
+    log_info "Removing TLS certificates and stunnel configuration at ${TLS_DIR}..."
+    rm -rf "$TLS_DIR"
+    log_ok "Removed ${TLS_DIR}."
+fi
+
+# 7. Database preservation / removal
 if [[ -d "$DATA_DIR" ]]; then
     echo ""
     read -r -p "Do you want to delete the database and client records at ${DATA_DIR}? [y/N]: " CONFIRM_DB || true
@@ -87,13 +106,13 @@ if [[ -d "$DATA_DIR" ]]; then
     fi
 fi
 
-# 7. Remove Log Directory
+# 8. Remove Log Directory
 if [[ -d "$LOG_DIR" ]]; then
     rm -rf "$LOG_DIR"
     log_ok "Removed ${LOG_DIR}."
 fi
 
-# 8. User removal prompt
+# 9. User removal prompt
 if id -u "$APP_NAME" >/dev/null 2>&1; then
     read -r -p "Do you want to remove the dedicated system user '${APP_NAME}'? [y/N]: " CONFIRM_USER || true
     if [[ "${CONFIRM_USER:-n}" =~ ^[Yy]$ ]]; then

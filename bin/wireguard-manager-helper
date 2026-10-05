@@ -237,11 +237,9 @@ case "$COMMAND" in
         ;;
 
     pubkey)
-        # Accepts private key via argument or stdin
-        PRIVKEY="${2:-}"
-        if [[ -z "$PRIVKEY" ]]; then
-            read -r PRIVKEY || true
-        fi
+        # Accepts private key strictly via stdin to avoid exposing private key in process lists (/proc/<pid>/cmdline)
+        read -r PRIVKEY || true
+        PRIVKEY="$(echo "$PRIVKEY" | tr -d '\r\n')"
         if ! [[ "$PRIVKEY" =~ $KEY_REGEX ]]; then
             error_exit "Invalid private key format"
         fi

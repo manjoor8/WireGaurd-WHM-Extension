@@ -75,6 +75,8 @@ $tables = $pdo->query("SELECT name FROM sqlite_master WHERE type='table'")->fetc
 assertTest(in_array('clients', $tables), 'Table clients exists');
 assertTest(in_array('settings', $tables), 'Table settings exists');
 assertTest(in_array('audit_log', $tables), 'Table audit_log exists');
+assertTest(in_array('admin_auth', $tables), 'Table admin_auth exists');
+assertTest(in_array('login_attempts', $tables), 'Table login_attempts exists');
 
 // Test 2: Verify default settings
 $configService = new ConfigService($pdo);
@@ -157,10 +159,24 @@ assertTest(in_array('DISABLE_CLIENT', $actions), 'Audit log contains DISABLE_CLI
 assertTest(in_array('ENABLE_CLIENT', $actions), 'Audit log contains ENABLE_CLIENT');
 assertTest(in_array('REVOKE_CLIENT', $actions), 'Audit log contains REVOKE_CLIENT');
 
-// Test 10: AuthService password verification
+// Test 10: AuthService password verification & lifecycle
 use WireGuardManager\AuthService;
-assertTest(AuthService::verifyPassword('[REDACTED]'), 'AuthService accepts default password [REDACTED]');
-assertTest(!AuthService::verifyPassword('WrongPassword123'), 'AuthService rejects incorrect password');
+assertTest(!AuthService::hasPassword(), 'AuthService initially has no password configured');
+assertTest(!AuthService::verifyPassword('TestPassword123!'), 'verifyPassword returns false when no password configured');
+
+// Validate password rules
+assertTest(AuthService::validateNewPassword('short') !== null, 'Password under 12 characters is rejected');
+assertTest(AuthService::validateNewPassword('ValidPasswordWithMoreThan12Chars!') === null, 'Valid password is accepted');
+
+// Set password
+AuthService::setPassword('ValidPasswordWithMoreThan12Chars!');
+assertTest(AuthService::hasPassword(), 'AuthService reports password is now configured');
+assertTest(AuthService::verifyPassword('ValidPasswordWithMoreThan12Chars!'), 'verifyPassword accepts correct password');
+assertTest(!AuthService::verifyPassword('WrongPassword123!'), 'verifyPassword rejects wrong password');
+
+// Test lockout reset
+AuthService::resetLockouts();
+assertTest(AuthService::lockoutRemaining('127.0.0.1') === 0, 'No lockout remaining after reset');
 
 // Clean up temp DB
 @unlink($tempDbPath);

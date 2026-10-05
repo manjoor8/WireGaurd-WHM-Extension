@@ -2,35 +2,54 @@
 
 ## 1. Executive Summary
 
-This document describes the architectural design and security posture of the standalone **WireGuard VPN Manager** on AlmaLinux 10.2.
+This document describes the architectural design and security posture of the standalone **WireGuard VPN Manager** on AlmaLinux 10.2 / RHEL systems.
 
-The application replaces previous attempts to integrate WireGuard management into WHM/cPanel plugins. It functions completely independently of cPanel, WHM, and Apache, without requiring reverse proxies or altering existing firewall and NAT rules.
+The application functions completely independently of cPanel, WHM, and Apache, without requiring reverse proxies or altering existing firewall and NAT rules. It serves traffic over encrypted HTTPS strictly on the private WireGuard management interface (`10.50.0.1:5443`).
 
 ---
 
 ## 2. Security Boundaries & Threat Modeling
 
-### 2.1 Interface Isolation (Kernel Socket Level)
-- The application web process is launched with:
-  ```bash
-  /usr/bin/php -S 10.50.0.1:5050 -t /opt/wireguard-manager/public /opt/wireguard-manager/public/router.php
-  ```
-- By specifying `10.50.0.1:5050`, the Linux kernel creates a TCP socket bound exclusively to the IP address associated with the `wg0` network device.
-- Traffic arriving on `eth0` (or any public WAN interface) with destination port `5050` is dropped or rejected at the network/socket layer because no process is listening on the public IP or wildcard (`0.0.0.0` / `::`).
-- As an added defense-in-depth measure, administrators may optionally restrict port 5050 to `10.50.0.0/24` in iptables/nftables:
-  ```bash
-  iptables -I INPUT -p tcp --dport 5050 ! -i wg0 -j DROP
-  ```
-  *(Note: Not executed automatically by install.sh to preserve cPanel firewall integrity).*
+### 2.1 Interface Isolation & Dual-Socket Model
+- The application separates TLS termination from application runtime:
+  1. **TLS Terminator (`stunnel`)**:
+     - Listens strictly on `10.50.0.1:5443` (the private WireGuard IP address assigned to `wg0`).
+     - Serves TLS 1.2 / 1.3 with a 2048-bit RSA self-signed certificate containing Subject Alternative Name `IP:10.50.0.1`.
+     - Rejects any direct WAN requests because no listener binds to public interfaces (`eth0`, `0.0.0.0`, or `::`).
+  2. **Application Backend (`php -S`)**:
+     - Binds strictly to `127.0.0.1:5050` (IPv4 loopback only).
+     - Never accepts connections from remote IPs or interfaces directly.
+     - Spawns concurrent workers via `PHP_CLI_SERVER_WORKERS=4`.
 
-### 2.2 Access Control in V1
-- V1 intentionally implements zero application-level authentication (no passwords, sessions, or logins).
-- Access control relies entirely on membership in the WireGuard cryptographic network:
-  1. Only peers with valid WireGuard keys configured on `wg0` can establish an encrypted tunnel.
-  2. Only machines inside the `10.50.0.0/24` subnet can route packets to `10.50.0.1`.
-- Access to `http://10.50.0.1:5050` is granted immediately upon connection to the VPN.
+### 2.2 Database-Backed Authentication & Lockout Protection
+- Administrator credentials are stored as a bcrypt hash (`PASSWORD_BCRYPT` with cost 12) in SQLite (`admin_auth` table).
+- Passwords must be at least 12 characters and max 72 bytes.
+- If no password is configured in the database, the application fails closed: login is blocked, displaying an informative message directing the admin to run `/usr/local/bin/wireguard-manager-passwd`.
+- **Brute-Force Rate Limiting**:
+  - Failed login attempts are recorded in `login_attempts` with client IP and timestamps.
+  - 5 failed attempts within 15 minutes trigger a 15-minute IP lockout.
+  - Artificial sleep delays (`usleep(300000)`) dampen online timing attacks.
+  - Verification uses `password_verify` and constant-time dummy comparisons when users or hashes are missing.
 
-### 2.3 Privilege Separation
+### 2.3 Session Hardening & Invalidation
+- Dedicated session cookie `WGMSESSID` with flags:
+  - `HttpOnly`: Prevents JavaScript reading the cookie.
+  - `SameSite=Strict`: Protects against cross-site request forgery.
+  - `Secure`: Enabled automatically when TLS is active (`WGM_TLS=1`).
+- Rolling inactivity timeout of 30 minutes; absolute session ceiling of 12 hours.
+- Session IDs are regenerated upon successful authentication.
+- A cryptographic credential fingerprint (`hash('sha256', password_hash)`) is bound to the session: changing the admin password automatically invalidates all other concurrent active sessions.
+
+### 2.4 CSRF & Defense-in-Depth HTTP Headers
+- Every POST request must supply a valid `csrf_token` validated via `hash_equals()`.
+- Central HTTP headers emitted on every response:
+  - `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; form-action 'self'; frame-ancestors 'none';`
+  - `X-Frame-Options: DENY` (anti-clickjacking)
+  - `X-Content-Type-Options: nosniff` (MIME sniffing defense)
+  - `Referrer-Policy: strict-origin-when-cross-origin`
+- Host header enforcement: `Security::enforceHost()` strictly rejects requests with spoofed `Host` headers not matching `10.50.0.1:5443` or `127.0.0.1:5050`.
+
+### 2.5 Privilege Separation
 - The web server process runs as user `wireguard-manager` (system user without login shell).
 - WireGuard peer management (`wg set wg0 ...`) requires elevated root privileges.
 - Rather than running PHP as root, the application delegates privileged operations to `/usr/local/bin/wireguard-manager-helper`.
@@ -40,10 +59,10 @@ The application replaces previous attempts to integrate WireGuard management int
   - Hardened with strict regex validation for all parameters:
     - Public Keys: `^[A-Za-z0-9+/]{43}=$`
     - Allowed IPs: `^10\.50\.0\.(?:[2-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-4])$`
-    - Commands: Whitelist of `status`, `list-peers`, `peer-info`, `add-peer`, `remove-peer`, `traffic`, `handshake`, `genkey`, `pubkey`.
-  - Shell execution from arbitrary user input is strictly impossible.
+    - Actions: `status`, `dump`, `list-peers`, `peer-info`, `add-peer`, `remove-peer`, `traffic`, `handshake`, `genkey`, `pubkey`.
+  - Sensitive private keys are read strictly through standard input (stdin) rather than command-line arguments to prevent leakage in process tables (`/proc/<pid>/cmdline`).
 
-### 2.4 Sensitive Key Protection
+### 2.6 Sensitive Key Protection
 - Curve25519 private keys generated for client configuration are stored in SQLite database with file permissions `0660` inside `/var/lib/wireguard-manager/` (directory mode `0750`).
 - The database is outside the web document root (`/opt/wireguard-manager/public`).
 - Private keys are **never** logged to audit trails, debug output, or syslog.
@@ -54,32 +73,37 @@ The application replaces previous attempts to integrate WireGuard management int
 ## 3. Component Architecture
 
 ```
-+-------------------------------------------------------------------------+
-|                              Linux Server                               |
-|                                                                         |
-|  +-----------------------------+     +-------------------------------+  |
-|  |       Systemd Service       |     |     WireGuard Kernel/Tool     |  |
-|  |  (wireguard-manager.service)|     |             (wg0)             |  |
-|  +--------------+--------------+     +---------------+---------------+  |
-|                 |                                    ^                  |
-|                 v                                    |                  |
-|  +-----------------------------+                     |                  |
-|  |  PHP Built-in Server (5050) |                     |                  |
-|  |     (User: wireguard-manager)                     |                  |
-|  +--------------+--------------+                     |                  |
-|                 |                                    |                  |
-|                 v                                    |                  |
-|  +-----------------------------+     sudo -n         |                  |
-|  |    Privileged Helper Script | --------------------+                  |
-|  | (wireguard-manager-helper)  |  (strictly validated parameters)       |
-|  +-----------------------------+                                        |
-|                 |                                                       |
-|                 v                                                       |
-|  +-----------------------------+                                        |
-|  |     SQLite Database File    |                                        |
-|  |  (/var/lib/.../wireguard.db)|                                        |
-|  +-----------------------------+                                        |
-+-------------------------------------------------------------------------+
++----------------------------------------------------------------------------------+
+|                                  Linux Server                                    |
+|                                                                                  |
+|  +-----------------------------+         +------------------------------------+  |
+|  |   stunnel TLS Terminator    |         |       WireGuard Kernel/Tool        |  |
+|  |   (wireguard-manager-tls)   |         |               (wg0)                |  |
+|  |     (10.50.0.1:5443)        |         +-----------------+------------------+  |
+|  +--------------+--------------+                           ^                     |
+|                 | (Forwarded loopback traffic)             |                     |
+|                 v                                          |                     |
+|  +-----------------------------+                           |                     |
+|  |   PHP Built-in Server       |                           |                     |
+|  |  (wireguard-manager.service)|                           |                     |
+|  |      (127.0.0.1:5050)       |                           |                     |
+|  |   (User: wireguard-manager) |                           |                     |
+|  +--------------+--------------+                           |                     |
+|                 |                                          |                     |
+|                 v                                          |                     |
+|  +-----------------------------+         sudo -n           |                     |
+|  |   Privileged Helper Script  | --------------------------+                     |
+|  | (wireguard-manager-helper)  |  (strictly validated parameters, stdin keys)    |
+|  +-----------------------------+                                                 |
+|                 |                                                                |
+|                 v                                                                |
+|  +-----------------------------+                                                 |
+|  |     SQLite Database File    |                                                 |
+|  |  (/var/lib/.../wireguard.db)|                                                 |
+|  |   (clients, admin_auth,     |                                                 |
+|  |    login_attempts, audit)   |                                                 |
+|  +-----------------------------+                                                 |
++----------------------------------------------------------------------------------+
 ```
 
 ---

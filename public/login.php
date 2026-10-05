@@ -1,17 +1,19 @@
 <?php
 declare(strict_types=1);
 
-if (session_status() === PHP_SESSION_NONE) {
-    @session_start();
-}
-
+// bootstrap enforces Host allow-list, hardened session and CSRF on POST
 require_once dirname(__DIR__) . '/src/bootstrap.php';
 
 use WireGuardManager\AuthService;
 
 $rawReturn = $_GET['return'] ?? $_POST['return'] ?? '/index.php';
 $returnUrl = '/index.php';
-if (is_string($rawReturn) && str_starts_with($rawReturn, '/') && !str_starts_with($rawReturn, '//')) {
+if (is_string($rawReturn)
+    && str_starts_with($rawReturn, '/')
+    && !str_starts_with($rawReturn, '//')
+    && !str_contains($rawReturn, '\\')
+    && !preg_match('/[\r\n]/', $rawReturn)
+) {
     $returnUrl = $rawReturn;
 }
 
@@ -21,30 +23,28 @@ if (AuthService::isAuthenticated()) {
     exit;
 }
 
+$passwordConfigured = AuthService::hasPassword();
 $error = null;
-$msg = $_GET['msg'] ?? null;
 
-if (empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+// Session-only flash (never from the query string)
+$msg = $_SESSION['flash_success'] ?? null;
+unset($_SESSION['flash_success']);
+if (!empty($_SESSION['flash_error'])) {
+    $error = $_SESSION['flash_error'];
+    unset($_SESSION['flash_error']);
 }
-$csrfToken = $_SESSION['csrf_token'];
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $postedToken = $_POST['csrf_token'] ?? '';
-    if (!hash_equals($csrfToken, (string)$postedToken)) {
-        $error = 'Invalid or expired session. Please refresh and try again.';
-    } else {
-        $password = (string)($_POST['password'] ?? '');
-        if (AuthService::login($password)) {
-            // Regenerate CSRF token on successful login
-            $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-            header('Location: ' . $returnUrl);
-            exit;
-        } else {
-            $error = 'Invalid password. Please try again.';
-        }
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $passwordConfigured) {
+    $password = (string)($_POST['password'] ?? '');
+    $result = AuthService::login($password);
+    if ($result['ok']) {
+        header('Location: ' . $returnUrl);
+        exit;
     }
+    $error = $result['error'];
 }
+
+$csrfToken = \WireGuardManager\Security::csrfToken();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -146,7 +146,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                 <?php endif; ?>
 
-                <form method="POST" action="/login.php">
+                <?php if (!$passwordConfigured): ?>
+                    <div class="alert alert-danger">
+                        <span class="alert-icon">&#x26A0;</span>
+                        <span class="alert-text">
+                            No administrator password is configured. Sign-in is disabled.<br>
+                            On the server, run as root: <code>wireguard-manager-passwd</code>
+                        </span>
+                    </div>
+                <?php else: ?>
+                <form method="POST" action="/login.php" autocomplete="on">
                     <input type="hidden" name="csrf_token" value="<?= h($csrfToken) ?>">
                     <input type="hidden" name="return" value="<?= h($returnUrl) ?>">
 
@@ -158,6 +167,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             name="password"
                             class="form-control"
                             placeholder="Enter management password"
+                            autocomplete="current-password"
+                            maxlength="72"
                             required
                             autofocus
                         >
@@ -167,6 +178,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <button type="submit" class="btn btn-primary btn-block">Sign In</button>
                     </div>
                 </form>
+                <?php endif; ?>
             </div>
         </div>
     </div>

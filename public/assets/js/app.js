@@ -18,6 +18,47 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
+    // Form submit confirmation dialogs via data-confirm
+    document.querySelectorAll('form[data-confirm]').forEach(function (form) {
+        form.addEventListener('submit', function (e) {
+            var msg = form.getAttribute('data-confirm');
+            if (msg && !confirm(msg)) {
+                e.preventDefault();
+            }
+        });
+    });
+
+    // Modal close buttons via data-close-modal
+    document.querySelectorAll('[data-close-modal]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var modalId = btn.getAttribute('data-close-modal');
+            if (modalId) {
+                closeModal(modalId);
+            }
+        });
+    });
+
+    // Copy configuration to clipboard button
+    var copyBtn = document.getElementById('btnCopyConfig');
+    if (copyBtn) {
+        copyBtn.addEventListener('click', function () {
+            var box = document.getElementById('configBox');
+            if (!box) return;
+            var text = box.textContent;
+            navigator.clipboard.writeText(text).then(function () {
+                var orig = copyBtn.textContent;
+                copyBtn.textContent = 'Copied!';
+                copyBtn.classList.add('btn-success');
+                setTimeout(function () {
+                    copyBtn.textContent = orig;
+                    copyBtn.classList.remove('btn-success');
+                }, 2000);
+            }).catch(function (err) {
+                alert('Could not copy to clipboard: ' + err);
+            });
+        });
+    }
+
     // Mobile navigation toggle
     var navToggle = document.getElementById('navToggle');
     var appNav = document.getElementById('appNav');
@@ -96,25 +137,6 @@ function openQrModal(clientId, clientName) {
         .catch(function (err) {
             container.innerHTML = '<div class="alert alert-danger">Failed to fetch QR code: ' + err.message + '</div>';
         });
-}
-
-function copyConfig() {
-    var box = document.getElementById('configBox');
-    if (!box) return;
-
-    var text = box.textContent;
-    navigator.clipboard.writeText(text).then(function () {
-        var btn = event.target;
-        var orig = btn.textContent;
-        btn.textContent = 'Copied!';
-        btn.classList.add('btn-success');
-        setTimeout(function () {
-            btn.textContent = orig;
-            btn.classList.remove('btn-success');
-        }, 2000);
-    }).catch(function (err) {
-        alert('Could not copy to clipboard: ' + err);
-    });
 }
 
 // Close modals when clicking outside modal dialog

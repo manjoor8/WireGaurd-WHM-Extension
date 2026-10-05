@@ -9,7 +9,7 @@ Type=simple
 User=wireguard-manager
 Group=wireguard-manager
 WorkingDirectory=/opt/wireguard-manager
-ExecStart=/usr/bin/php -S 10.50.0.1:5050 -t /opt/wireguard-manager/public /opt/wireguard-manager/public/router.php
+ExecStart=/usr/bin/php -S 127.0.0.1:5050 -t /opt/wireguard-manager/public /opt/wireguard-manager/public/router.php
 Restart=on-failure
 RestartSec=3s
 
@@ -27,7 +27,8 @@ Environment=APP_ENV=production
 Environment=DATABASE_PATH=/var/lib/wireguard-manager/wireguard.db
 Environment=HELPER_BIN=/usr/local/bin/wireguard-manager-helper
 Environment=SESSION_DIR=/var/lib/wireguard-manager/sessions
-Environment=ADMIN_PASSWORD=[REDACTED]
+Environment=WGM_TLS=1
+Environment=PHP_CLI_SERVER_WORKERS=4
 
 [Install]
 WantedBy=multi-user.target
