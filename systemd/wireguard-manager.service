@@ -14,13 +14,11 @@ Restart=on-failure
 RestartSec=3s
 
 # Security Sandbox
-# Note: wireguard-manager uses sudo to execute the dedicated helper /usr/local/bin/wireguard-manager-helper.
-# NoNewPrivileges must be false so sudo can transition to root for the helper binary.
 NoNewPrivileges=false
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/wireguard-manager /var/log/wireguard-manager
+ReadWritePaths=/var/lib/wireguard-manager /var/log/wireguard-manager /opt/wireguard-manager
 
 # Environment
 Environment=APP_ENV=production

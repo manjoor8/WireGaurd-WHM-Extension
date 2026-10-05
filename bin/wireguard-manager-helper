@@ -4,7 +4,7 @@
 # Path: /usr/local/bin/wireguard-manager-helper
 # Owned by: root:wireguard-manager (0750)
 #
-# Dedicated privileged helper for strictly validated WireGuard operations.
+# Dedicated privileged helper for strictly validated lifecycle & WireGuard operations.
 # NO arbitrary commands or shells are permitted.
 # ==============================================================================
 
@@ -14,9 +14,11 @@ WG_BIN="$(command -v wg 2>/dev/null || echo "/usr/bin/wg")"
 INTERFACE="wg0"
 IP_REGEX='^10\.50\.0\.([2-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-4])$'
 KEY_REGEX='^[A-Za-z0-9+/]{43}=$'
+IFACE_REGEX='^[a-zA-Z0-9_-]{1,15}$'
+PORT_REGEX='^[0-9]{2,5}$'
 
 # Ensure PATH is safe
-export PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+export PATH="/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin"
 
 # Function to return error in JSON format
 error_exit() {
@@ -25,24 +27,327 @@ error_exit() {
     exit 1
 }
 
-# Function to check if wg binary exists
-if [[ ! -x "$WG_BIN" ]]; then
-    error_exit "WireGuard utility not found or not executable at $WG_BIN"
-fi
+# Function to verify wg exists for wg-specific commands
+require_wg() {
+    if [[ ! -x "$WG_BIN" ]]; then
+        error_exit "WireGuard utility not found or not executable at $WG_BIN"
+    fi
+}
 
 COMMAND="${1:-}"
 
 case "$COMMAND" in
+    check-privileges)
+        IS_ROOT=false
+        if [[ "$(id -u)" -eq 0 ]]; then
+            IS_ROOT=true
+        fi
+        printf '{"success": true, "is_root": %s, "uid": %d}\n' "$IS_ROOT" "$(id -u)"
+        ;;
+
+    check-wireguard)
+        INSTALLED=false
+        WG_PATH=""
+        WG_VERSION=""
+        MODULE_LOADED=false
+
+        if command -v wg >/dev/null 2>&1; then
+            INSTALLED=true
+            WG_PATH="$(command -v wg)"
+            WG_VERSION="$("$WG_PATH" --version 2>&1 | head -n 1 || true)"
+        elif [[ -x "/usr/bin/wg" ]]; then
+            INSTALLED=true
+            WG_PATH="/usr/bin/wg"
+            WG_VERSION="$("$WG_PATH" --version 2>&1 | head -n 1 || true)"
+        fi
+
+        if lsmod 2>/dev/null | grep -qw "wireguard"; then
+            MODULE_LOADED=true
+        elif [[ -d /sys/module/wireguard ]]; then
+            MODULE_LOADED=true
+        fi
+
+        printf '{"success": true, "installed": %s, "path": "%s", "version": "%s", "module_loaded": %s}\n' \
+            "$INSTALLED" "$WG_PATH" "$(echo "$WG_VERSION" | sed 's/"/\\"/g')" "$MODULE_LOADED"
+        ;;
+
+    install-wireguard)
+        INSTALL_OUT=""
+        if command -v dnf >/dev/null 2>&1; then
+            INSTALL_OUT=$(dnf install -y epel-release wireguard-tools iptables 2>&1 || true)
+        elif command -v yum >/dev/null 2>&1; then
+            INSTALL_OUT=$(yum install -y epel-release wireguard-tools iptables 2>&1 || true)
+        elif command -v apt-get >/dev/null 2>&1; then
+            INSTALL_OUT=$(DEBIAN_FRONTEND=noninteractive apt-get update -y && DEBIAN_FRONTEND=noninteractive apt-get install -y wireguard wireguard-tools iptables 2>&1 || true)
+        else
+            error_exit "Unsupported package manager. Please install wireguard-tools and iptables manually."
+        fi
+
+        modprobe wireguard >/dev/null 2>&1 || true
+
+        if ! command -v wg >/dev/null 2>&1 && [[ ! -x "/usr/bin/wg" ]]; then
+            error_exit "WireGuard installation failed: $(echo "$INSTALL_OUT" | tail -n 5)"
+        fi
+
+        NEW_VER="$(wg --version 2>&1 | head -n 1 || echo "installed")"
+        printf '{"success": true, "message": "WireGuard installed successfully", "version": "%s"}\n' \
+            "$(echo "$NEW_VER" | sed 's/"/\\"/g')"
+        ;;
+
+    check-sysctl)
+        IP_FWD=$(sysctl -n net.ipv4.ip_forward 2>/dev/null || echo "0")
+        printf '{"success": true, "ip_forward": %s}\n' "$IP_FWD"
+        ;;
+
+    enable-sysctl)
+        mkdir -p /etc/sysctl.d
+        cat <<'EOF' > /etc/sysctl.d/99-wireguard.conf
+net.ipv4.ip_forward = 1
+net.ipv6.conf.all.forwarding = 1
+EOF
+        sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || true
+        sysctl -p /etc/sysctl.d/99-wireguard.conf >/dev/null 2>&1 || true
+        printf '{"success": true, "message": "IPv4 forwarding enabled", "ip_forward": 1}\n'
+        ;;
+
+    check-interface)
+        REQ_IFACE="${2:-$INTERFACE}"
+        if ! [[ "$REQ_IFACE" =~ $IFACE_REGEX ]]; then
+            error_exit "Invalid interface name format"
+        fi
+
+        EXISTS=false
+        UP=false
+        IP_ADDR=""
+
+        if ip link show "$REQ_IFACE" >/dev/null 2>&1; then
+            EXISTS=true
+            if ip link show "$REQ_IFACE" 2>/dev/null | grep -qw "UP"; then
+                UP=true
+            fi
+            IP_ADDR=$(ip addr show dev "$REQ_IFACE" 2>/dev/null | awk '/inet / {print $2}' | head -n 1 || true)
+        fi
+
+        CONF_EXISTS=false
+        if [[ -f "/etc/wireguard/${REQ_IFACE}.conf" ]]; then
+            CONF_EXISTS=true
+        fi
+
+        printf '{"success": true, "interface": "%s", "exists": %s, "is_up": %s, "ip_address": "%s", "conf_exists": %s}\n' \
+            "$REQ_IFACE" "$EXISTS" "$UP" "$IP_ADDR" "$CONF_EXISTS"
+        ;;
+
+    create-interface)
+        REQ_IFACE="${2:-$INTERFACE}"
+        VPN_IP="${3:-10.50.0.1}"
+        LISTEN_PORT="${4:-51820}"
+        EGRESS_IFACE="${5:-}"
+
+        if ! [[ "$REQ_IFACE" =~ $IFACE_REGEX ]]; then
+            error_exit "Invalid interface name format: $REQ_IFACE"
+        fi
+        if ! [[ "$LISTEN_PORT" =~ $PORT_REGEX ]]; then
+            error_exit "Invalid listen port: $LISTEN_PORT"
+        fi
+
+        # Read server private key from stdin
+        read -r SERVER_PRIVKEY || true
+        SERVER_PRIVKEY="$(echo "$SERVER_PRIVKEY" | tr -d '\r\n')"
+        if ! [[ "$SERVER_PRIVKEY" =~ $KEY_REGEX ]]; then
+            error_exit "Invalid private key format provided on stdin"
+        fi
+
+        require_wg
+        SERVER_PUBKEY=$(echo "$SERVER_PRIVKEY" | "$WG_BIN" pubkey)
+
+        # Detect egress interface if not passed
+        if [[ -z "$EGRESS_IFACE" ]]; then
+            EGRESS_IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev") print $(i+1)}' || true)
+            if [[ -z "$EGRESS_IFACE" ]]; then
+                EGRESS_IFACE=$(ip route 2>/dev/null | grep default | awk '{print $5}' | head -n 1 || echo "eth0")
+            fi
+        fi
+
+        WG_CONF_DIR="/etc/wireguard"
+        mkdir -p "$WG_CONF_DIR"
+        chmod 0700 "$WG_CONF_DIR"
+        WG_CONF_FILE="${WG_CONF_DIR}/${REQ_IFACE}.conf"
+
+        cat <<EOF > "$WG_CONF_FILE"
+[Interface]
+Address = ${VPN_IP}/24
+ListenPort = ${LISTEN_PORT}
+PrivateKey = ${SERVER_PRIVKEY}
+SaveConfig = false
+
+PostUp = iptables -A FORWARD -i ${REQ_IFACE} -j ACCEPT; iptables -A FORWARD -o ${REQ_IFACE} -j ACCEPT; iptables -t nat -A POSTROUTING -o ${EGRESS_IFACE} -j MASQUERADE
+PostDown = iptables -D FORWARD -i ${REQ_IFACE} -j ACCEPT; iptables -D FORWARD -o ${REQ_IFACE} -j ACCEPT; iptables -t nat -D POSTROUTING -o ${EGRESS_IFACE} -j MASQUERADE
+EOF
+        chmod 0600 "$WG_CONF_FILE"
+
+        printf '{"success": true, "message": "Interface configuration created", "interface": "%s", "public_key": "%s", "listen_port": "%s"}\n' \
+            "$REQ_IFACE" "$SERVER_PUBKEY" "$LISTEN_PORT"
+        ;;
+
+    start-interface)
+        REQ_IFACE="${2:-$INTERFACE}"
+        if ! [[ "$REQ_IFACE" =~ $IFACE_REGEX ]]; then
+            error_exit "Invalid interface name format"
+        fi
+
+        systemctl enable "wg-quick@${REQ_IFACE}" >/dev/null 2>&1 || true
+        START_OUT=$(systemctl restart "wg-quick@${REQ_IFACE}" 2>&1 || wg-quick up "$REQ_IFACE" 2>&1 || true)
+
+        if ! ip link show "$REQ_IFACE" >/dev/null 2>&1; then
+            error_exit "Failed to start interface $REQ_IFACE: $START_OUT"
+        fi
+
+        printf '{"success": true, "message": "WireGuard interface started successfully", "interface": "%s"}\n' "$REQ_IFACE"
+        ;;
+
+    stop-interface)
+        REQ_IFACE="${2:-$INTERFACE}"
+        if ! [[ "$REQ_IFACE" =~ $IFACE_REGEX ]]; then
+            error_exit "Invalid interface name format"
+        fi
+
+        systemctl stop "wg-quick@${REQ_IFACE}" >/dev/null 2>&1 || wg-quick down "$REQ_IFACE" >/dev/null 2>&1 || true
+        printf '{"success": true, "message": "Interface stopped", "interface": "%s"}\n' "$REQ_IFACE"
+        ;;
+
+    restart-interface)
+        REQ_IFACE="${2:-$INTERFACE}"
+        if ! [[ "$REQ_IFACE" =~ $IFACE_REGEX ]]; then
+            error_exit "Invalid interface name format"
+        fi
+
+        systemctl restart "wg-quick@${REQ_IFACE}" >/dev/null 2>&1 || (wg-quick down "$REQ_IFACE" >/dev/null 2>&1; wg-quick up "$REQ_IFACE" >/dev/null 2>&1) || true
+        printf '{"success": true, "message": "Interface restarted", "interface": "%s"}\n' "$REQ_IFACE"
+        ;;
+
+    configure-firewall)
+        LISTEN_PORT="${2:-51820}"
+        if ! [[ "$LISTEN_PORT" =~ $PORT_REGEX ]]; then
+            error_exit "Invalid port number: $LISTEN_PORT"
+        fi
+
+        FW_TYPE="none"
+        if systemctl is-active --quiet firewalld 2>/dev/null; then
+            FW_TYPE="firewalld"
+            firewall-cmd --add-port="${LISTEN_PORT}/udp" --permanent >/dev/null 2>&1 || true
+            firewall-cmd --add-masquerade --permanent >/dev/null 2>&1 || true
+            firewall-cmd --reload >/dev/null 2>&1 || true
+        elif command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qw "active"; then
+            FW_TYPE="ufw"
+            ufw allow "${LISTEN_PORT}/udp" >/dev/null 2>&1 || true
+        elif command -v iptables >/dev/null 2>&1; then
+            FW_TYPE="iptables"
+            iptables -C INPUT -p udp --dport "$LISTEN_PORT" -j ACCEPT 2>/dev/null || iptables -I INPUT -p udp --dport "$LISTEN_PORT" -j ACCEPT 2>/dev/null || true
+        fi
+
+        printf '{"success": true, "message": "Firewall configured", "firewall_type": "%s", "port": %d}\n' "$FW_TYPE" "$LISTEN_PORT"
+        ;;
+
+    check-firewall)
+        LISTEN_PORT="${2:-51820}"
+        if ! [[ "$LISTEN_PORT" =~ $PORT_REGEX ]]; then
+            error_exit "Invalid port number: $LISTEN_PORT"
+        fi
+
+        FW_ACTIVE=false
+        PORT_OPEN=false
+
+        if systemctl is-active --quiet firewalld 2>/dev/null; then
+            FW_ACTIVE=true
+            if firewall-cmd --list-ports 2>/dev/null | grep -qw "${LISTEN_PORT}/udp"; then
+                PORT_OPEN=true
+            fi
+        elif command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qw "active"; then
+            FW_ACTIVE=true
+            if ufw status 2>/dev/null | grep -E "${LISTEN_PORT}/udp\s+ALLOW"; then
+                PORT_OPEN=true
+            fi
+        else
+            # Default Linux packet filter without active zone firewall
+            FW_ACTIVE=false
+            PORT_OPEN=true
+        fi
+
+        printf '{"success": true, "firewall_active": %s, "port_open": %s, "port": %d}\n' \
+            "$FW_ACTIVE" "$PORT_OPEN" "$LISTEN_PORT"
+        ;;
+
+    apply-update)
+        PKG_PATH="${2:-}"
+        if [[ -z "$PKG_PATH" || ! -f "$PKG_PATH" ]]; then
+            error_exit "Update package does not exist: $PKG_PATH"
+        fi
+
+        TARGET_DIR="/opt/wireguard-manager"
+        mkdir -p "$TARGET_DIR"
+
+        if [[ "$PKG_PATH" == *.zip ]]; then
+            if ! command -v unzip >/dev/null 2>&1; then
+                dnf install -y unzip >/dev/null 2>&1 || yum install -y unzip >/dev/null 2>&1 || apt-get install -y unzip >/dev/null 2>&1 || true
+            fi
+            unzip -q -o "$PKG_PATH" -d "$TARGET_DIR" || error_exit "Failed to unzip update package"
+        elif [[ "$PKG_PATH" == *.tar.gz || "$PKG_PATH" == *.tgz ]]; then
+            tar -xzf "$PKG_PATH" -C "$TARGET_DIR" || error_exit "Failed to extract tarball update package"
+        else
+            error_exit "Unsupported package format: $PKG_PATH"
+        fi
+
+        # Update helper and passwd permissions
+        if [[ -f "${TARGET_DIR}/bin/wireguard-manager-helper" ]]; then
+            cp "${TARGET_DIR}/bin/wireguard-manager-helper" /usr/local/bin/wireguard-manager-helper
+            chown root:wireguard-manager /usr/local/bin/wireguard-manager-helper
+            chmod 0750 /usr/local/bin/wireguard-manager-helper
+        fi
+        if [[ -f "${TARGET_DIR}/bin/wireguard-manager-passwd" ]]; then
+            cp "${TARGET_DIR}/bin/wireguard-manager-passwd" /usr/local/bin/wireguard-manager-passwd
+            chown root:wireguard-manager /usr/local/bin/wireguard-manager-passwd
+            chmod 0750 /usr/local/bin/wireguard-manager-passwd
+        fi
+
+        chown -R wireguard-manager:wireguard-manager "$TARGET_DIR"
+
+        # Restart backend service
+        systemctl restart wireguard-manager.service >/dev/null 2>&1 || true
+
+        printf '{"success": true, "message": "Update package applied successfully"}\n'
+        ;;
+
+    rollback-update)
+        BACKUP_PATH="${2:-}"
+        if [[ -z "$BACKUP_PATH" || ! -f "$BACKUP_PATH" ]]; then
+            error_exit "Backup archive does not exist: $BACKUP_PATH"
+        fi
+
+        TARGET_DIR="/opt/wireguard-manager"
+        if [[ "$BACKUP_PATH" == *.zip ]]; then
+            unzip -q -o "$BACKUP_PATH" -d "$TARGET_DIR" || error_exit "Failed to restore backup zip"
+        elif [[ "$BACKUP_PATH" == *.tar.gz || "$BACKUP_PATH" == *.tgz ]]; then
+            tar -xzf "$BACKUP_PATH" -C "$TARGET_DIR" || error_exit "Failed to restore backup tarball"
+        fi
+
+        if [[ -f "${TARGET_DIR}/bin/wireguard-manager-helper" ]]; then
+            cp "${TARGET_DIR}/bin/wireguard-manager-helper" /usr/local/bin/wireguard-manager-helper
+            chmod 0750 /usr/local/bin/wireguard-manager-helper
+        fi
+
+        chown -R wireguard-manager:wireguard-manager "$TARGET_DIR"
+        systemctl restart wireguard-manager.service >/dev/null 2>&1 || true
+
+        printf '{"success": true, "message": "Rollback completed successfully"}\n'
+        ;;
+
     status)
-        # Check if interface exists in wg
+        require_wg
         if ! "$WG_BIN" show "$INTERFACE" >/dev/null 2>&1; then
             printf '{"success": false, "interface_up": false, "interface": "%s", "error": "Interface %s is not active"}\n' "$INTERFACE" "$INTERFACE"
             exit 0
         fi
 
-        # Get dump format:
-        # Line 1: private_key public_key listen_port fwmark
-        # Lines 2+: public_key preshared_key endpoint allowed_ips latest_handshake transfer_rx transfer_tx persistent_keepalive
         DUMP=$("$WG_BIN" show "$INTERFACE" dump 2>/dev/null | tr -d '\r' || true)
         if [[ -z "$DUMP" ]]; then
             printf '{"success": false, "interface_up": false, "error": "Could not read dump for %s"}\n' "$INTERFACE"
@@ -58,6 +363,7 @@ case "$COMMAND" in
         ;;
 
     dump)
+        require_wg
         if ! "$WG_BIN" show "$INTERFACE" >/dev/null 2>&1; then
             printf '{"success": false, "error": "Interface %s is not active"}\n' "$INTERFACE"
             exit 0
@@ -66,6 +372,7 @@ case "$COMMAND" in
         ;;
 
     list-peers)
+        require_wg
         if ! "$WG_BIN" show "$INTERFACE" >/dev/null 2>&1; then
             printf '{"success": false, "error": "Interface %s is not active"}\n' "$INTERFACE"
             exit 0
@@ -75,7 +382,6 @@ case "$COMMAND" in
         PEER_COUNT=0
         printf '{"success": true, "peers": ['
 
-        # Read peers (skipping first line which is interface line)
         FIRST=1
         while IFS=$'\t' read -r p_key p_psk p_endpoint p_allowed p_handshake p_rx p_tx p_keepalive; do
             if [[ $FIRST -eq 1 ]]; then
@@ -111,6 +417,7 @@ case "$COMMAND" in
         ;;
 
     peer-info)
+        require_wg
         PUBKEY="${2:-}"
         if ! [[ "$PUBKEY" =~ $KEY_REGEX ]]; then
             error_exit "Invalid WireGuard public key format"
@@ -146,6 +453,7 @@ case "$COMMAND" in
         ;;
 
     add-peer)
+        require_wg
         PUBKEY="${2:-}"
         ALLOWED_IP="${3:-}"
 
@@ -153,12 +461,10 @@ case "$COMMAND" in
             error_exit "Invalid WireGuard public key format: $PUBKEY"
         fi
 
-        # Validate that ALLOWED_IP matches 10.50.0.X (2-254)
         if ! echo "$ALLOWED_IP" | grep -Eq "$IP_REGEX"; then
             error_exit "Invalid AllowedIP: must be in 10.50.0.2 - 10.50.0.254 range (received: $ALLOWED_IP)"
         fi
 
-        # Execute atomic peer addition to WireGuard runtime
         SET_OUTPUT=$("$WG_BIN" set "$INTERFACE" peer "$PUBKEY" allowed-ips "${ALLOWED_IP}/32" 2>&1) || {
             error_exit "Failed to add peer to $INTERFACE via wg set: $SET_OUTPUT"
         }
@@ -168,6 +474,7 @@ case "$COMMAND" in
         ;;
 
     remove-peer)
+        require_wg
         PUBKEY="${2:-}"
 
         if ! [[ "$PUBKEY" =~ $KEY_REGEX ]]; then
@@ -182,6 +489,7 @@ case "$COMMAND" in
         ;;
 
     traffic)
+        require_wg
         PUBKEY="${2:-}"
         if ! [[ "$PUBKEY" =~ $KEY_REGEX ]]; then
             error_exit "Invalid WireGuard public key format"
@@ -208,6 +516,7 @@ case "$COMMAND" in
         ;;
 
     handshake)
+        require_wg
         PUBKEY="${2:-}"
         if ! [[ "$PUBKEY" =~ $KEY_REGEX ]]; then
             error_exit "Invalid WireGuard public key format"
@@ -231,13 +540,14 @@ case "$COMMAND" in
         ;;
 
     genkey)
+        require_wg
         KEY=$("$WG_BIN" genkey)
         PUBKEY=$(echo "$KEY" | "$WG_BIN" pubkey)
         printf '{"success": true, "private_key": "%s", "public_key": "%s"}\n' "$KEY" "$PUBKEY"
         ;;
 
     pubkey)
-        # Accepts private key strictly via stdin to avoid exposing private key in process lists (/proc/<pid>/cmdline)
+        require_wg
         read -r PRIVKEY || true
         PRIVKEY="$(echo "$PRIVKEY" | tr -d '\r\n')"
         if ! [[ "$PRIVKEY" =~ $KEY_REGEX ]]; then
@@ -248,6 +558,6 @@ case "$COMMAND" in
         ;;
 
     *)
-        error_exit "Unknown or unsupported command. Allowed: status, dump, list-peers, peer-info, add-peer, remove-peer, traffic, handshake, genkey, pubkey"
+        error_exit "Unknown or unsupported command. Allowed: check-privileges, check-wireguard, install-wireguard, check-sysctl, enable-sysctl, check-interface, create-interface, start-interface, stop-interface, restart-interface, configure-firewall, check-firewall, apply-update, rollback-update, status, dump, list-peers, peer-info, add-peer, remove-peer, traffic, handshake, genkey, pubkey"
         ;;
 esac

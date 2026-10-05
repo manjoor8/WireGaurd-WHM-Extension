@@ -55,6 +55,26 @@ class Security
         ];
     }
 
+    public static function isAllowedHost(string $host): bool
+    {
+        if (in_array($host, self::allowedHosts(), true)) {
+            return true;
+        }
+
+        // Allow any valid IP address with allowed ports or no port (immune to DNS rebinding)
+        $parts = explode(':', $host);
+        $ip = $parts[0];
+        $port = $parts[1] ?? null;
+
+        if (filter_var($ip, FILTER_VALIDATE_IP)) {
+            if ($port === null || in_array($port, [self::TLS_PORT, self::PLAIN_PORT], true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public static function allowedOrigins(): array
     {
         $origins = [];
@@ -62,6 +82,13 @@ class Security
             $origins[] = 'https://' . $host;
             $origins[] = 'http://' . $host;
         }
+
+        $currentHost = strtolower(trim((string)($_SERVER['HTTP_HOST'] ?? '')));
+        if ($currentHost !== '' && self::isAllowedHost($currentHost)) {
+            $origins[] = 'https://' . $currentHost;
+            $origins[] = 'http://' . $currentHost;
+        }
+
         return array_values(array_unique($origins));
     }
 
@@ -72,7 +99,7 @@ class Security
         }
 
         $host = strtolower(trim((string)($_SERVER['HTTP_HOST'] ?? '')));
-        if (!in_array($host, self::allowedHosts(), true)) {
+        if (!self::isAllowedHost($host)) {
             http_response_code(421);
             header('Content-Type: text/plain; charset=UTF-8');
             header('Cache-Control: no-store');

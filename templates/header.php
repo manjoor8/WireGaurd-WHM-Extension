@@ -23,6 +23,7 @@ $serverPort = \WireGuardManager\Security::isHttps()
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= h($pageTitle) ?> - WireGuard Manager</title>
+    <meta name="csrf-token" content="<?= h(\WireGuardManager\Security::csrfToken()) ?>">
     <link rel="stylesheet" href="/assets/css/app.css">
 </head>
 <body>
@@ -49,6 +50,7 @@ $serverPort = \WireGuardManager\Security::isHttps()
             </div>
             <nav class="app-nav" id="appNav">
                 <a href="/index.php" class="nav-item <?= $activeNav === 'dashboard' ? 'active' : '' ?>">Dashboard</a>
+                <a href="/status.php" class="nav-item <?= $activeNav === 'status' ? 'active' : '' ?>">Status</a>
                 <a href="/clients.php" class="nav-item <?= $activeNav === 'clients' ? 'active' : '' ?>">Clients</a>
                 <a href="/add-client.php" class="nav-item <?= $activeNav === 'add-client' ? 'active' : '' ?>">Add Client</a>
                 <a href="/settings.php" class="nav-item <?= $activeNav === 'settings' ? 'active' : '' ?>">Settings</a>

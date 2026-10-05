@@ -39,9 +39,11 @@
                 </form>
             <?php endif; ?>
 
-            <button type="button" class="btn btn-danger btn-revoke" data-client-id="<?= (int)$client['id'] ?>" data-client-name="<?= h($client['name']) ?>">Revoke</button>
+            <button type="button" class="btn btn-outline btn-revoke" data-client-id="<?= (int)$client['id'] ?>" data-client-name="<?= h($client['name']) ?>">Revoke</button>
+            <button type="button" class="btn btn-danger btn-delete-client" data-client-id="<?= (int)$client['id'] ?>" data-client-name="<?= h($client['name']) ?>" data-client-ip="<?= h($client['vpn_ip']) ?>">&#x1F5D1; Delete</button>
         <?php else: ?>
             <span class="badge badge-danger badge-lg">Revoked Client</span>
+            <button type="button" class="btn btn-danger btn-delete-client" data-client-id="<?= (int)$client['id'] ?>" data-client-name="<?= h($client['name']) ?>" data-client-ip="<?= h($client['vpn_ip']) ?>">&#x1F5D1; Delete Record</button>
         <?php endif; ?>
     </div>
 </div>
@@ -199,6 +201,32 @@
                     <?= csrf_field() ?>
                     <input type="hidden" name="action" value="revoke">
                     <button type="submit" class="btn btn-danger">Confirm Revoke</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div id="deleteModal" class="modal" style="display: none;">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Delete Client Record</h3>
+                <button type="button" class="modal-close" data-close-modal="deleteModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to permanently delete <strong id="deleteClientName"><?= h($client['name']) ?></strong> (<code id="deleteClientIp"><?= h($client['vpn_ip']) ?></code>)?</p>
+                <div class="alert alert-danger mt-2">
+                    <strong>Warning:</strong> This will permanently remove the peer from WireGuard and delete the database record. This action cannot be undone.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-close-modal="deleteModal">Cancel</button>
+                <form method="POST" action="/client.php?id=<?= (int)$client['id'] ?>" class="inline-form">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="action" value="delete">
+                    <button type="submit" class="btn btn-danger">Confirm Delete</button>
                 </form>
             </div>
         </div>

@@ -150,14 +150,38 @@ try {
 }
 assertTest($caughtRevokedReenable, 'Re-enabling revoked client throws exception');
 
+// Test 8b: Update client name & description
+$clientService->updateClient((int)$c2['id'], 'bob-tablet', 'Updated notes for Bob');
+$c2Updated = $clientService->getClient((int)$c2['id']);
+assertTest($c2Updated['name'] === 'bob-tablet', 'Client name updated in database');
+assertTest($c2Updated['description'] === 'Updated notes for Bob', 'Client description updated in database');
+
+// Test 8c: Delete client permanently from database & WireGuard
+assertTest(isset($mockWg->activePeers[$c2['public_key']]), 'Client 2 active in WireGuard before deletion');
+$clientService->deleteClient((int)$c2['id']);
+$c2Deleted = $clientService->getClient((int)$c2['id']);
+assertTest($c2Deleted === null, 'Client 2 deleted from database');
+assertTest(!isset($mockWg->activePeers[$c2['public_key']]), 'Client 2 removed from WireGuard runtime');
+
+// Test 8d: Deleting non-existent client throws exception
+$caughtDeleteNotFound = false;
+try {
+    $clientService->deleteClient(99999);
+} catch (\InvalidArgumentException $e) {
+    $caughtDeleteNotFound = true;
+}
+assertTest($caughtDeleteNotFound, 'Deleting non-existent client throws exception');
+
 // Test 9: Audit log recorded actions
 $logs = $audit->getRecentLogs(10);
-assertTest(count($logs) >= 4, 'Audit logs recorded');
+assertTest(count($logs) >= 6, 'Audit logs recorded');
 $actions = array_column($logs, 'action');
 assertTest(in_array('CREATE_CLIENT', $actions), 'Audit log contains CREATE_CLIENT');
 assertTest(in_array('DISABLE_CLIENT', $actions), 'Audit log contains DISABLE_CLIENT');
 assertTest(in_array('ENABLE_CLIENT', $actions), 'Audit log contains ENABLE_CLIENT');
 assertTest(in_array('REVOKE_CLIENT', $actions), 'Audit log contains REVOKE_CLIENT');
+assertTest(in_array('UPDATE_CLIENT', $actions), 'Audit log contains UPDATE_CLIENT');
+assertTest(in_array('DELETE_CLIENT', $actions), 'Audit log contains DELETE_CLIENT');
 
 // Test 10: AuthService password verification & lifecycle
 use WireGuardManager\AuthService;

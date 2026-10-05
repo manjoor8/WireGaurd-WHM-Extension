@@ -32,6 +32,8 @@ Security::enforceHost();
 $routes = [
     '/'               => 'index.php',
     '/index.php'      => 'index.php',
+    '/setup.php'      => 'setup.php',
+    '/status.php'     => 'status.php',
     '/clients.php'    => 'clients.php',
     '/client.php'     => 'client.php',
     '/add-client.php' => 'add-client.php',
@@ -39,6 +41,9 @@ $routes = [
     '/logs.php'       => 'logs.php',
     '/login.php'      => 'login.php',
     '/logout.php'     => 'logout.php',
+    '/api/setup.php'  => 'api/setup.php',
+    '/api/update.php' => 'api/update.php',
+    '/api/health.php' => 'api/health.php',
 ];
 
 // Allow extension-less URLs, e.g. /clients

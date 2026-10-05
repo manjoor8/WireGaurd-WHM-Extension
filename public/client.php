@@ -93,6 +93,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($action === 'rekey') {
             $clientService->rekeyClient($clientId);
             $msg = "New Curve25519 key pair generated. Mobile QR barcode is now active!";
+        } elseif ($action === 'update') {
+            $name = (string)($_POST['name'] ?? '');
+            $desc = isset($_POST['description']) ? (string)$_POST['description'] : null;
+            $clientService->updateClient($clientId, $name, $desc);
+            $msg = "Client information updated.";
+        } elseif ($action === 'delete') {
+            $clientName = $client['name'];
+            $clientService->deleteClient($clientId);
+            Session::flash('success', "Client '{$clientName}' has been permanently deleted from database and WireGuard.");
+            header('Location: /clients.php');
+            exit;
         } else {
             throw new \InvalidArgumentException('Unknown action.');
         }

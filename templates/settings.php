@@ -196,3 +196,100 @@ $passwordErrors = $passwordErrors ?? [];
         </div>
     </div>
 </div>
+
+<!-- Application Updates Card -->
+<div class="card max-w-2xl mt-4" id="updates">
+    <div class="card-header flex-between">
+        <h2 class="card-title">Application Updates</h2>
+        <?php if (!empty($updateInfo['available'])): ?>
+            <span class="badge badge-warning">Update Available</span>
+        <?php else: ?>
+            <span class="badge badge-success">Up to Date</span>
+        <?php endif; ?>
+    </div>
+    <div class="card-body">
+        <div class="grid-2-col mb-4">
+            <div>
+                <span class="text-secondary text-sm">Current Version</span>
+                <div style="font-size: 1.25rem; font-weight: 700; color: var(--text-primary);">
+                    <?= h($updateInfo['current_version']) ?>
+                </div>
+            </div>
+            <div>
+                <span class="text-secondary text-sm">Latest Available</span>
+                <div style="font-size: 1.25rem; font-weight: 700; color: var(--text-primary);">
+                    <?= h($updateInfo['latest_version']) ?>
+                </div>
+            </div>
+        </div>
+
+        <?php if (!empty($updateInfo['available']) && !empty($updateInfo['update'])): ?>
+            <div class="alert alert-info mb-4">
+                <strong>New Version Available (<?= h($updateInfo['update']->version) ?>):</strong>
+                <?php if (!empty($updateInfo['update']->releaseNotes)): ?>
+                    <div class="mt-2 text-sm" style="white-space: pre-line; line-height: 1.5;">
+                        <?= h($updateInfo['update']->releaseNotes) ?>
+                    </div>
+                <?php endif; ?>
+            </div>
+
+            <div class="alert alert-warning mb-4 text-sm">
+                <strong>Safety Notice:</strong> Updating will safely restart the management application backend.
+                Your active WireGuard tunnels, peers, and keys will <strong>not</strong> be removed or interrupted.
+            </div>
+
+            <form method="POST" action="/settings.php#updates" onsubmit="return confirm('Update WireGuard VPN Manager?\n\nCurrent version: <?= h($updateInfo['current_version']) ?>\nNew version: <?= h($updateInfo['latest_version']) ?>\n\nThe application may restart during the update.\nYour WireGuard VPN configuration and peers will not be removed.\n\nProceed with update?');">
+                <?= csrf_field() ?>
+                <input type="hidden" name="action" value="apply_update">
+                <button type="submit" class="btn btn-primary">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px; vertical-align: -2px;">
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    </svg>
+                    Update Now to <?= h($updateInfo['latest_version']) ?>
+                </button>
+            </form>
+        <?php else: ?>
+            <div class="alert alert-success mb-4">
+                <span class="alert-icon">&#x2714;</span>
+                <span class="alert-text">You are running the latest version of WireGuard VPN Manager.</span>
+            </div>
+
+            <form method="GET" action="/settings.php">
+                <button type="submit" class="btn btn-outline">Check for Updates</button>
+            </form>
+        <?php endif; ?>
+    </div>
+</div>
+
+<!-- About Application Card -->
+<div class="card max-w-2xl mt-4" id="about">
+    <div class="card-header">
+        <h2 class="card-title">About WireGuard VPN Manager</h2>
+    </div>
+    <div class="card-body">
+        <div class="details-grid">
+            <div class="detail-item">
+                <span class="detail-label">Application</span>
+                <span class="detail-value">WireGuard VPN Manager</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">Version</span>
+                <span class="detail-value"><code><?= h($aboutInfo['version']) ?></code></span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">Build</span>
+                <span class="detail-value"><code><?= h($aboutInfo['build']) ?></code></span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">PHP Runtime</span>
+                <span class="detail-value"><?= h($aboutInfo['runtime']) ?></span>
+            </div>
+            <div class="detail-item detail-full">
+                <span class="detail-label">Host Operating System</span>
+                <span class="detail-value"><?= h($aboutInfo['os']) ?></span>
+            </div>
+        </div>
+    </div>
+</div>

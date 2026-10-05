@@ -99,7 +99,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    if ($action === 'change_password') {
+    if ($action === 'apply_update') {
+        try {
+            $updateService = new \WireGuardManager\Update\UpdateService($db);
+            $check = $updateService->checkForUpdates();
+            if (!$check['available'] || $check['update'] === null) {
+                Session::flash('error', 'No update available to install.');
+                header('Location: /settings.php#updates');
+                exit;
+            }
+            $pkg = $updateService->downloadUpdate($check['update']);
+            $res = $updateService->applyUpdate($pkg);
+            Session::flash('success', "Application updated successfully from {$res['previous_version']} to {$res['new_version']}!");
+            header('Location: /settings.php#updates');
+            exit;
+        } catch (\Throwable $e) {
+            Session::flash('error', 'Application update failed: ' . $e->getMessage());
+            header('Location: /settings.php#updates');
+            exit;
+        }
+    } elseif ($action === 'change_password') {
         $current = (string)($_POST['current_password'] ?? '');
         $new = (string)($_POST['new_password'] ?? '');
         $confirm = (string)($_POST['confirm_password'] ?? '');
@@ -124,6 +143,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 }
+
+$updateService = new \WireGuardManager\Update\UpdateService($db);
+$updateInfo = $updateService->checkForUpdates();
+$aboutInfo = [
+    'version' => \WireGuardManager\App::getVersion(),
+    'build' => \WireGuardManager\App::getBuild(),
+    'runtime' => \WireGuardManager\App::getRuntime(),
+    'os' => \WireGuardManager\App::getOperatingSystem(),
+];
 
 $settings = $configService->getAll();
 $pageTitle = 'Settings';

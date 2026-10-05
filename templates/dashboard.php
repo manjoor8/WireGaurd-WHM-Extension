@@ -17,6 +17,25 @@
     </div>
 </div>
 
+<?php if (!empty($systemHealth) && empty($systemHealth['overall']['is_ready'])): ?>
+    <div class="alert alert-warning mb-4" style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <strong>⚠ Action Required:</strong> WireGuard VPN is not fully configured or running.
+            Pending: <code><?= h(implode(', ', $systemHealth['overall']['pending_steps'])) ?></code>.
+        </div>
+        <a href="/setup.php" class="btn btn-sm btn-primary">Complete Setup &rarr;</a>
+    </div>
+<?php endif; ?>
+
+<?php if (!empty($updateInfo['available'])): ?>
+    <div class="alert alert-info mb-4" style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <strong>Software Update Available:</strong> Version <strong><?= h($updateInfo['latest_version']) ?></strong> is available (Current: <?= h($updateInfo['current_version']) ?>).
+        </div>
+        <a href="/settings.php#updates" class="btn btn-sm btn-primary">View Update &rarr;</a>
+    </div>
+<?php endif; ?>
+
 <?php if (!empty($status['error'])): ?>
     <div class="alert alert-danger mb-4">
         <strong>WireGuard Runtime Notice:</strong> <?= h($status['error']) ?>
@@ -91,6 +110,67 @@
                 <span class="detail-label">Server Public Key</span>
                 <span class="detail-value font-mono"><code><?= h($status['public_key'] ?? 'N/A') ?></code></span>
             </div>
+        </div>
+    </div>
+</div>
+
+<div class="grid-2-col mb-4">
+    <div class="card">
+        <div class="card-header flex-between">
+            <h2 class="card-title">System Health</h2>
+            <a href="/status.php" class="btn btn-xs btn-outline">Full Status &rarr;</a>
+        </div>
+        <div class="card-body">
+            <div style="display: flex; flex-direction: column; gap: 0.5rem; font-size: 0.9rem;">
+                <div style="display: flex; justify-content: space-between;">
+                    <span>Application (v<?= h($appVersion) ?>)</span>
+                    <span class="badge badge-success">✓ Ready</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span>WireGuard</span>
+                    <?php if (!empty($systemHealth['components']['wireguard']['installed'])): ?>
+                        <span class="badge badge-success">✓ Installed</span>
+                    <?php else: ?>
+                        <span class="badge badge-danger">⚠ Not Installed</span>
+                    <?php endif; ?>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span>VPN Interface (<?= h($config['interface']) ?>)</span>
+                    <?php if (!empty($systemHealth['components']['interface']['configured'])): ?>
+                        <span class="badge badge-success">✓ Configured</span>
+                    <?php else: ?>
+                        <span class="badge badge-warning">⚠ Not Configured</span>
+                    <?php endif; ?>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span>Firewall &amp; Forwarding</span>
+                    <?php if (!empty($systemHealth['components']['firewall']['configured'])): ?>
+                        <span class="badge badge-success">✓ Configured</span>
+                    <?php else: ?>
+                        <span class="badge badge-warning">⚠ Action Required</span>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header flex-between">
+            <h2 class="card-title">Application Updates</h2>
+            <a href="/settings.php#updates" class="btn btn-xs btn-outline">Settings &rarr;</a>
+        </div>
+        <div class="card-body">
+            <?php if (!empty($updateInfo['available'])): ?>
+                <div class="alert alert-warning mb-2 p-2 text-sm">
+                    <strong>Update Available:</strong> Version <?= h($updateInfo['latest_version']) ?> is ready.
+                </div>
+                <a href="/settings.php#updates" class="btn btn-sm btn-primary">View Update</a>
+            <?php else: ?>
+                <div style="display: flex; align-items: center; gap: 0.5rem; color: #10b981; font-weight: 600; margin-bottom: 0.5rem;">
+                    <span>✓ Application is up to date (v<?= h($appVersion) ?>)</span>
+                </div>
+                <p class="text-muted text-xs mb-0">Running latest stable release.</p>
+            <?php endif; ?>
         </div>
     </div>
 </div>

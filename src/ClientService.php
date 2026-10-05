@@ -379,6 +379,53 @@ class ClientService
         return true;
     }
 
+    public function deleteClient(int $id): bool
+    {
+        $client = $this->getClient($id);
+        if (!$client) {
+            throw new InvalidArgumentException("Client not found.");
+        }
+
+        // 1. Remove peer from active WireGuard interface if present
+        try {
+            $this->wg->removePeer($client['public_key']);
+        } catch (\Throwable $e) {
+            // Peer may already be removed or wg0 down
+        }
+
+        // 2. Permanently delete from database
+        $stmt = $this->db->prepare("DELETE FROM clients WHERE id = :id");
+        $stmt->execute([':id' => $id]);
+
+        $this->audit->log('DELETE_CLIENT', "Client '{$client['name']}' deleted from database and WireGuard (id: {$id}, ip: {$client['vpn_ip']})");
+        return true;
+    }
+
+    public function updateClient(int $id, string $name, ?string $description = null): bool
+    {
+        $client = $this->getClient($id);
+        if (!$client) {
+            throw new InvalidArgumentException("Client not found.");
+        }
+
+        $trimmedName = trim($name);
+        if ($trimmedName === '') {
+            throw new InvalidArgumentException("Client name cannot be empty.");
+        }
+
+        $stmt = $this->db->prepare(
+            "UPDATE clients SET name = :name, description = :desc, updated_at = datetime('now') WHERE id = :id"
+        );
+        $stmt->execute([
+            ':name' => $trimmedName,
+            ':desc' => $description !== null ? trim($description) : null,
+            ':id' => $id,
+        ]);
+
+        $this->audit->log('UPDATE_CLIENT', "Client '{$trimmedName}' updated (id: {$id})");
+        return true;
+    }
+
     public function canGenerateQr(array $client): bool
     {
         if (empty($client['private_key']) || !preg_match('/^[A-Za-z0-9+\/]{43}=$/', $client['private_key'])) {

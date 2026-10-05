@@ -38,6 +38,13 @@ try {
         }
     }
 
+    $healthService = new \WireGuardManager\HealthService($db, $wg, $configService);
+    $updateService = new \WireGuardManager\Update\UpdateService($db);
+
+    $systemHealth = $healthService->getSystemHealth();
+    $updateInfo = $updateService->checkForUpdates();
+    $appVersion = \WireGuardManager\App::getVersion();
+
     $metrics = [
         'active_clients' => $activeClients,
         'online_clients' => $onlineClients,

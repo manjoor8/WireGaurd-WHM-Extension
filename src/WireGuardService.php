@@ -30,6 +30,8 @@ class WireGuardService
         $this->useSudo = true;
         if (function_exists('posix_getuid')) {
             $this->useSudo = (posix_getuid() !== 0);
+        } elseif (PHP_OS_FAMILY === 'Windows') {
+            $this->useSudo = false;
         }
     }
 
@@ -86,6 +88,172 @@ class WireGuardService
 
         return ['success' => true, 'output' => $rawOutput];
     }
+
+    private function runHelperWithStdin(string $command, array $args, string $stdinContent): array
+    {
+        $cmdParts = [];
+        if ($this->useSudo) {
+            $sudoBin = is_executable('/usr/bin/sudo') ? '/usr/bin/sudo' : 'sudo';
+            $cmdParts[] = $sudoBin;
+            $cmdParts[] = '-n';
+        }
+
+        $cmdParts[] = escapeshellcmd($this->helperBin);
+        $cmdParts[] = escapeshellarg($command);
+
+        foreach ($args as $arg) {
+            $cmdParts[] = escapeshellarg((string)$arg);
+        }
+
+        $fullCmd = implode(' ', $cmdParts);
+        $descriptors = [
+            0 => ['pipe', 'r'],
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
+
+        $process = proc_open($fullCmd, $descriptors, $pipes);
+        if (!is_resource($process)) {
+            throw new RuntimeException("Failed to spawn process for helper command: $command");
+        }
+
+        fwrite($pipes[0], $stdinContent);
+        fclose($pipes[0]);
+
+        $stdout = stream_get_contents($pipes[1]);
+        fclose($pipes[1]);
+        $stderr = stream_get_contents($pipes[2]);
+        fclose($pipes[2]);
+
+        $exitCode = proc_close($process);
+        $rawOutput = trim((string)$stdout);
+
+        $json = json_decode($rawOutput, true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($json)) {
+            return $json;
+        }
+
+        $start = strpos($rawOutput, '{');
+        $end = strrpos($rawOutput, '}');
+        if ($start !== false && $end !== false && $end >= $start) {
+            $extracted = json_decode(substr($rawOutput, $start, $end - $start + 1), true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($extracted)) {
+                return $extracted;
+            }
+        }
+
+        if ($exitCode !== 0) {
+            $err = trim($stderr) ?: $rawOutput;
+            throw new RuntimeException("Helper command '$command' failed ($exitCode): " . ($err ?: 'unknown error'));
+        }
+
+        return ['success' => true, 'output' => $rawOutput];
+    }
+
+    public function isInstalled(): bool
+    {
+        $info = $this->getInstallationInfo();
+        return !empty($info['installed']);
+    }
+
+    public function getInstallationInfo(): array
+    {
+        try {
+            return $this->runHelper('check-wireguard');
+        } catch (\Throwable $e) {
+            // Fallback: check CLI wg directly
+            $which = @shell_exec('command -v wg 2>/dev/null || which wg 2>/dev/null');
+            $installed = !empty($which) && is_executable(trim($which));
+            return [
+                'success' => true,
+                'installed' => $installed,
+                'path' => $installed ? trim($which) : '',
+                'version' => $installed ? trim((string)@shell_exec(escapeshellcmd(trim($which)) . ' --version 2>&1 | head -n 1')) : '',
+                'module_loaded' => false,
+            ];
+        }
+    }
+
+    public function installWireGuard(): array
+    {
+        return $this->runHelper('install-wireguard');
+    }
+
+    public function isInterfaceConfigured(string $iface = 'wg0'): bool
+    {
+        $details = $this->getInterfaceDetails($iface);
+        return !empty($details['conf_exists']) || !empty($details['exists']);
+    }
+
+    public function getInterfaceDetails(string $iface = 'wg0'): array
+    {
+        try {
+            return $this->runHelper('check-interface', [$iface]);
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'interface' => $iface,
+                'exists' => false,
+                'is_up' => false,
+                'conf_exists' => file_exists("/etc/wireguard/{$iface}.conf"),
+                'error' => $e->getMessage(),
+            ];
+        }
+    }
+
+    public function createInterface(
+        string $iface = 'wg0',
+        string $vpnIp = '10.50.0.1',
+        int $listenPort = 51820,
+        ?string $serverPrivateKey = null,
+        ?string $egressIface = null
+    ): array {
+        if ($serverPrivateKey === null) {
+            $keypair = $this->generateKeyPair();
+            $serverPrivateKey = $keypair['private_key'];
+        }
+
+        return $this->runHelperWithStdin(
+            'create-interface',
+            [$iface, $vpnIp, (string)$listenPort, $egressIface ?? ''],
+            $serverPrivateKey
+        );
+    }
+
+    public function startInterface(string $iface = 'wg0'): array
+    {
+        return $this->runHelper('start-interface', [$iface]);
+    }
+
+    public function stopInterface(string $iface = 'wg0'): array
+    {
+        return $this->runHelper('stop-interface', [$iface]);
+    }
+
+    public function restartInterface(string $iface = 'wg0'): array
+    {
+        return $this->runHelper('restart-interface', [$iface]);
+    }
+
+    public function checkFirewall(int $port = 51820): array
+    {
+        try {
+            return $this->runHelper('check-firewall', [(string)$port]);
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'firewall_active' => false,
+                'port_open' => false,
+                'error' => $e->getMessage(),
+            ];
+        }
+    }
+
+    public function configureFirewall(int $port = 51820, string $iface = 'wg0'): array
+    {
+        return $this->runHelper('configure-firewall', [(string)$port, $iface]);
+    }
+
 
     public function getStatus(): array
     {

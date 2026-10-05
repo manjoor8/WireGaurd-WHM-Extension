@@ -24,6 +24,10 @@ if (AuthService::isAuthenticated()) {
 }
 
 $passwordConfigured = AuthService::hasPassword();
+if (!$passwordConfigured) {
+    header('Location: /setup.php');
+    exit;
+}
 $error = null;
 
 // Session-only flash (never from the query string)

@@ -256,16 +256,28 @@ class AuthService
             return;
         }
 
+        // If no password is configured, redirect to First-Time Setup Wizard
+        if (!self::hasPassword()) {
+            if (!empty($_GET['qr']) || (!empty($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json'))) {
+                http_response_code(401);
+                header('Content-Type: application/json; charset=UTF-8');
+                echo json_encode(['success' => false, 'code' => 'SETUP_REQUIRED', 'error' => 'System initialization required.']);
+                exit;
+            }
+            header('Location: /setup.php');
+            exit;
+        }
+
         $uri = (string)($_SERVER['REQUEST_URI'] ?? '/index.php');
         if (!str_starts_with($uri, '/') || str_starts_with($uri, '//') || str_contains($uri, '\\')) {
             $uri = '/index.php';
         }
 
         // JSON endpoints get a JSON error instead of an HTML redirect.
-        if (!empty($_GET['qr'])) {
+        if (!empty($_GET['qr']) || (!empty($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json'))) {
             http_response_code(401);
             header('Content-Type: application/json; charset=UTF-8');
-            echo json_encode(['success' => false, 'error' => 'Session expired. Please sign in again.']);
+            echo json_encode(['success' => false, 'code' => 'UNAUTHENTICATED', 'error' => 'Session expired. Please sign in again.']);
             exit;
         }
 
