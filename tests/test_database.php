@@ -178,6 +178,14 @@ assertTest(!AuthService::verifyPassword('WrongPassword123!'), 'verifyPassword re
 AuthService::resetLockouts();
 assertTest(AuthService::lockoutRemaining('127.0.0.1') === 0, 'No lockout remaining after reset');
 
+// Test 11: Key generation ordering & validation
+$realWg = new WireGuardService();
+if (function_exists('sodium_crypto_scalarmult_base')) {
+    $keys = $realWg->generateKeyPair();
+    assertTest(preg_match('/^[A-Za-z0-9+\/]{43}=$/', $keys['private_key']) === 1, 'Built-in crypto generated valid private key');
+    assertTest(preg_match('/^[A-Za-z0-9+\/]{43}=$/', $keys['public_key']) === 1, 'Built-in crypto generated valid public key');
+}
+
 // Clean up temp DB
 @unlink($tempDbPath);
 

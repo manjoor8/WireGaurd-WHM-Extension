@@ -195,67 +195,144 @@ class WireGuardService
 
     public function generateKeyPair(): array
     {
-        // Try helper first
+        $builtInError = null;
+
+        // 1. Attempt to generate key using built-in cryptographic function (ext-sodium)
+        try {
+            return $this->generateBuiltInKeyPair();
+        } catch (\Throwable $e) {
+            $builtInError = $e->getMessage();
+        }
+
+        // 2. If built-in crypto fails, attempt to generate keys using external tool (helper or wg CLI)
+        $externalError = null;
+        try {
+            return $this->generateExternalKeyPair();
+        } catch (\Throwable $e) {
+            $externalError = $e->getMessage();
+        }
+
+        // 3. If both fail, throw an exception signaling a critical dependency failure
+        throw new RuntimeException(
+            "Failed to generate WireGuard key pair (critical dependency failure): " .
+            "Built-in cryptographic function failed [{$builtInError}]; " .
+            "External tool failed [{$externalError}]."
+        );
+    }
+
+    /**
+     * Generate Curve25519 key pair using PHP built-in cryptographic function (ext-sodium).
+     *
+     * @return array{private_key: string, public_key: string}
+     * @throws RuntimeException
+     */
+    public function generateBuiltInKeyPair(): array
+    {
+        if (!function_exists('sodium_crypto_scalarmult_base')) {
+            throw new RuntimeException("ext-sodium function 'sodium_crypto_scalarmult_base' is not available.");
+        }
+
+        try {
+            // Generate 32 cryptographically secure random bytes
+            $random = random_bytes(32);
+
+            // Apply standard WireGuard / Curve25519 clamping
+            $random[0] = chr(ord($random[0]) & 248);
+            $random[31] = chr((ord($random[31]) & 127) | 64);
+
+            $privateKey = base64_encode($random);
+
+            // Derive 32-byte public key via scalar multiplication with base point
+            $rawPub = sodium_crypto_scalarmult_base($random);
+            $publicKey = base64_encode($rawPub);
+
+            $this->validatePublicKey($publicKey);
+
+            return [
+                'private_key' => $privateKey,
+                'public_key' => $publicKey,
+            ];
+        } catch (\Throwable $e) {
+            throw new RuntimeException("Sodium key derivation failed: " . $e->getMessage(), (int)$e->getCode(), $e);
+        }
+    }
+
+    /**
+     * Generate WireGuard key pair using external tool (privileged helper binary or direct wg CLI).
+     *
+     * @return array{private_key: string, public_key: string}
+     * @throws RuntimeException
+     */
+    public function generateExternalKeyPair(): array
+    {
+        $failures = [];
+
+        // 2a. Attempt via privileged helper
         try {
             $result = $this->runHelper('genkey');
             if (!empty($result['private_key']) && !empty($result['public_key'])) {
+                $priv = trim($result['private_key']);
+                $pub = trim($result['public_key']);
+                $this->validatePublicKey($pub);
                 return [
-                    'private_key' => trim($result['private_key']),
-                    'public_key' => trim($result['public_key']),
+                    'private_key' => $priv,
+                    'public_key' => $pub,
                 ];
             }
+            $helperErr = $result['error'] ?? 'Helper returned empty or invalid key pair output';
+            $failures[] = "Helper failed: " . $helperErr;
         } catch (\Throwable $e) {
-            // Helper fallback failed, try native openssl curve25519 or wg directly
+            $failures[] = "Helper error: " . $e->getMessage();
         }
 
-        return $this->generateNativeKeyPair();
-    }
-
-    private function generateNativeKeyPair(): array
-    {
-        $random = random_bytes(32);
-        $random[0] = chr(ord($random[0]) & 248);
-        $random[31] = chr((ord($random[31]) & 127) | 64);
-        $privateKey = base64_encode($random);
-
+        // 2b. Attempt via direct wg binary
         $wgPath = '/usr/bin/wg';
+        if (!is_executable($wgPath)) {
+            $whichWg = trim((string)shell_exec('command -v wg 2>/dev/null || which wg 2>/dev/null'));
+            if ($whichWg !== '' && is_executable($whichWg)) {
+                $wgPath = $whichWg;
+            }
+        }
+
         if (is_executable($wgPath)) {
-            $descriptors = [
-                0 => ["pipe", "r"],
-                1 => ["pipe", "w"],
-                2 => ["pipe", "w"]
-            ];
-            $process = proc_open("$wgPath pubkey", $descriptors, $pipes);
-            if (is_resource($process)) {
-                fwrite($pipes[0], $privateKey);
-                fclose($pipes[0]);
-                $publicKey = trim(stream_get_contents($pipes[1]));
-                fclose($pipes[1]);
-                fclose($pipes[2]);
-                proc_close($process);
-
-                if (!empty($publicKey)) {
-                    return [
-                        'private_key' => $privateKey,
-                        'public_key' => $publicKey,
-                    ];
-                }
-            }
-        }
-
-        if (function_exists('sodium_crypto_scalarmult_base')) {
             try {
-                $rawPub = sodium_crypto_scalarmult_base($random);
-                return [
-                    'private_key' => $privateKey,
-                    'public_key' => base64_encode($rawPub),
-                ];
+                $privKey = trim((string)shell_exec(escapeshellcmd($wgPath) . ' genkey 2>&1'));
+                if (preg_match('/^[A-Za-z0-9+\/]{43}=$/', $privKey)) {
+                    $descriptors = [
+                        0 => ["pipe", "r"],
+                        1 => ["pipe", "w"],
+                        2 => ["pipe", "w"]
+                    ];
+                    $process = proc_open(escapeshellcmd($wgPath) . ' pubkey', $descriptors, $pipes);
+                    if (is_resource($process)) {
+                        fwrite($pipes[0], $privKey);
+                        fclose($pipes[0]);
+                        $pubKey = trim((string)stream_get_contents($pipes[1]));
+                        fclose($pipes[1]);
+                        fclose($pipes[2]);
+                        $exitCode = proc_close($process);
+
+                        if ($exitCode === 0 && preg_match('/^[A-Za-z0-9+\/]{43}=$/', $pubKey)) {
+                            return [
+                                'private_key' => $privKey,
+                                'public_key' => $pubKey,
+                            ];
+                        }
+                        $failures[] = "Direct wg pubkey exited with code {$exitCode} or invalid key";
+                    } else {
+                        $failures[] = "proc_open failed for '$wgPath pubkey'";
+                    }
+                } else {
+                    $failures[] = "Direct wg genkey output was invalid: " . $privKey;
+                }
             } catch (\Throwable $e) {
-                // fall through
+                $failures[] = "Direct wg execution error: " . $e->getMessage();
             }
+        } else {
+            $failures[] = "'wg' binary not found or not executable at {$wgPath}";
         }
 
-        throw new RuntimeException("WireGuard key derivation failed: neither '/usr/bin/wg' nor sodium extension is available to calculate the Curve25519 public key.");
+        throw new RuntimeException(implode("; ", $failures));
     }
 
     public function validatePublicKey(string $key): void
