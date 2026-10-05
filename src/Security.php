@@ -19,7 +19,10 @@ class Security
      */
     public static function isHttps(): bool
     {
-        if (getenv('WGM_TLS') === '1') {
+        if (($_SERVER['WGM_TLS'] ?? $_ENV['WGM_TLS'] ?? getenv('WGM_TLS')) === '1') {
+            return true;
+        }
+        if (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
             return true;
         }
         return !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
@@ -54,8 +57,12 @@ class Security
 
     public static function allowedOrigins(): array
     {
-        $scheme = self::isHttps() ? 'https' : 'http';
-        return array_map(static fn($h) => $scheme . '://' . $h, self::allowedHosts());
+        $origins = [];
+        foreach (self::allowedHosts() as $host) {
+            $origins[] = 'https://' . $host;
+            $origins[] = 'http://' . $host;
+        }
+        return array_values(array_unique($origins));
     }
 
     public static function enforceHost(): void
@@ -118,14 +125,28 @@ class Security
         }
 
         $origin = $_SERVER['HTTP_ORIGIN'] ?? null;
-        if ($origin !== null && !in_array(strtolower(rtrim($origin, '/')), self::allowedOrigins(), true)) {
-            self::reject('Cross-origin request blocked.');
+        if ($origin !== null) {
+            $normalizedOrigin = strtolower(rtrim($origin, '/'));
+            $parsedHost = parse_url($normalizedOrigin, PHP_URL_HOST);
+            $parsedPort = parse_url($normalizedOrigin, PHP_URL_PORT);
+            $originHost = $parsedHost . ($parsedPort ? ':' . $parsedPort : '');
+
+            if (!in_array($normalizedOrigin, self::allowedOrigins(), true)
+                && !in_array($originHost, self::allowedHosts(), true)) {
+                self::reject('Cross-origin request blocked.');
+            }
         }
 
         if ($origin === null && !empty($_SERVER['HTTP_REFERER'])) {
             $ref = parse_url((string)$_SERVER['HTTP_REFERER']);
-            $refOrigin = strtolower(($ref['scheme'] ?? '') . '://' . ($ref['host'] ?? '') . (isset($ref['port']) ? ':' . $ref['port'] : ''));
-            if (!in_array($refOrigin, self::allowedOrigins(), true)) {
+            $refScheme = strtolower($ref['scheme'] ?? '');
+            $refHost = strtolower($ref['host'] ?? '');
+            $refPort = isset($ref['port']) ? ':' . $ref['port'] : '';
+            $refOrigin = $refScheme . '://' . $refHost . $refPort;
+            $refHostOnly = $refHost . $refPort;
+
+            if (!in_array($refOrigin, self::allowedOrigins(), true)
+                && !in_array($refHostOnly, self::allowedHosts(), true)) {
                 self::reject('Cross-origin request blocked.');
             }
         }
