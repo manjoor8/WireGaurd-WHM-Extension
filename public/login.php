@@ -98,6 +98,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             padding: 0.7rem 1rem;
             font-size: 0.95rem;
         }
+        @media (max-width: 480px) {
+            .login-wrapper {
+                padding: 1rem;
+                align-items: center;
+            }
+            .login-header {
+                padding: 1.5rem 1.25rem 1.25rem;
+            }
+            .login-body {
+                padding: 1.25rem;
+            }
+            .login-title {
+                font-size: 1.2rem;
+            }
+            .form-control {
+                font-size: 16px; /* Prevents auto zoom on mobile */
+            }
+        }
     </style>
 </head>
 <body>

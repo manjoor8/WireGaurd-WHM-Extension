@@ -18,6 +18,27 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
+    // Mobile navigation toggle
+    var navToggle = document.getElementById('navToggle');
+    var appNav = document.getElementById('appNav');
+    if (navToggle && appNav) {
+        navToggle.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var isOpen = appNav.classList.toggle('nav-open');
+            navToggle.classList.toggle('active');
+            navToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        });
+
+        // Close mobile nav when clicking outside
+        document.addEventListener('click', function (e) {
+            if (appNav.classList.contains('nav-open') && !appNav.contains(e.target) && !navToggle.contains(e.target)) {
+                appNav.classList.remove('nav-open');
+                navToggle.classList.remove('active');
+                navToggle.setAttribute('aria-expanded', 'false');
+            }
+        });
+    }
+
     // Auto dismiss alerts after 5 seconds
     setTimeout(function () {
         var alerts = document.querySelectorAll('.alert');

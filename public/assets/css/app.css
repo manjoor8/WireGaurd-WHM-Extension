@@ -42,6 +42,8 @@ body {
     background-color: var(--bg-card);
     border-bottom: 1px solid var(--border-color);
     padding: 0.75rem 1.5rem;
+    position: relative;
+    z-index: 100;
 }
 
 .header-container {
@@ -54,10 +56,17 @@ body {
     gap: 1rem;
 }
 
+.header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
 .header-brand {
     display: flex;
     align-items: center;
-    gap: 1rem;
+    gap: 0.75rem;
 }
 
 .brand-link {
@@ -72,6 +81,45 @@ body {
 
 .brand-icon {
     color: var(--primary);
+    flex-shrink: 0;
+}
+
+/* Nav Toggle Button (Hidden on Desktop) */
+.nav-toggle {
+    display: none;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    cursor: pointer;
+    padding: 0.45rem;
+    width: 38px;
+    height: 38px;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 4px;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.nav-toggle-bar {
+    display: block;
+    width: 20px;
+    height: 2px;
+    background-color: var(--text-primary);
+    border-radius: 2px;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.nav-toggle.active .nav-toggle-bar:nth-child(1) {
+    transform: translateY(6px) rotate(45deg);
+}
+
+.nav-toggle.active .nav-toggle-bar:nth-child(2) {
+    opacity: 0;
+}
+
+.nav-toggle.active .nav-toggle-bar:nth-child(3) {
+    transform: translateY(-6px) rotate(-45deg);
 }
 
 .app-nav {
@@ -83,11 +131,13 @@ body {
 .nav-item {
     color: var(--text-secondary);
     text-decoration: none;
-    padding: 0.4rem 0.8rem;
+    padding: 0.45rem 0.8rem;
     border-radius: var(--radius);
     font-size: 0.9rem;
     font-weight: 500;
     transition: all 0.15s ease-in-out;
+    display: inline-flex;
+    align-items: center;
 }
 
 .nav-item:hover {
@@ -98,6 +148,15 @@ body {
 .nav-item.active {
     color: #fff;
     background-color: var(--primary);
+}
+
+.nav-item-logout {
+    color: #f87171 !important;
+}
+
+.nav-item-logout:hover {
+    background-color: rgba(239, 68, 68, 0.15) !important;
+    color: #fca5a5 !important;
 }
 
 /* Main */
@@ -119,6 +178,13 @@ body {
     margin-bottom: 1.5rem;
     flex-wrap: wrap;
     gap: 1rem;
+}
+
+.page-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
 }
 
 .page-title {
@@ -627,16 +693,11 @@ body {
 }
 
 /* Utilities */
+/* Utilities */
 .grid-2-col {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 1.5rem;
-}
-
-@media (max-width: 768px) {
-    .grid-2-col {
-        grid-template-columns: 1fr;
-    }
 }
 
 .flex-between {
@@ -653,6 +714,10 @@ body {
 
 .font-mono {
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+code {
+    word-break: break-all;
 }
 
 .text-sm { font-size: 0.875rem; }
@@ -703,3 +768,279 @@ body {
 .security-tag {
     color: #cbd5e1;
 }
+
+/* ==========================================================================
+   Mobile & Tablet Responsive System (Up to 768px)
+   ========================================================================== */
+
+@media (max-width: 768px) {
+    /* Header & Navigation */
+    .app-header {
+        padding: 0.75rem 1rem;
+    }
+
+    .header-container {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0;
+    }
+
+    .header-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+    }
+
+    .nav-toggle {
+        display: flex;
+    }
+
+    .app-nav {
+        display: none;
+        flex-direction: column;
+        gap: 0.35rem;
+        padding-top: 0.75rem;
+        margin-top: 0.75rem;
+        border-top: 1px solid var(--border-color);
+        animation: navSlideDown 0.18s ease-in-out;
+    }
+
+    .app-nav.nav-open {
+        display: flex;
+    }
+
+    .nav-item {
+        padding: 0.7rem 0.85rem;
+        font-size: 0.95rem;
+        border-radius: var(--radius);
+        min-height: 44px;
+    }
+
+    /* Main Container */
+    .app-main {
+        padding: 1rem 0.75rem;
+    }
+
+    /* Page Header & Actions */
+    .page-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+    }
+
+    .page-title {
+        font-size: 1.35rem;
+    }
+
+    .page-actions {
+        width: 100%;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .page-actions .btn,
+    .page-actions form {
+        flex: 1 1 calc(50% - 0.25rem);
+        min-width: 130px;
+    }
+
+    .page-actions .btn {
+        width: 100%;
+        min-height: 40px;
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.65rem;
+        margin-bottom: 1rem;
+    }
+
+    .stat-card {
+        padding: 0.85rem 0.75rem;
+    }
+
+    .stat-label {
+        font-size: 0.7rem;
+    }
+
+    .stat-value {
+        font-size: 1.25rem;
+    }
+
+    .stat-meta {
+        font-size: 0.75rem;
+    }
+
+    /* 2-Column Grid collapses to 1 column */
+    .grid-2-col {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+
+    /* Cards */
+    .card-header {
+        padding: 0.75rem 1rem;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .card-title {
+        font-size: 1rem;
+    }
+
+    .card-body {
+        padding: 1rem;
+    }
+
+    .card-body.p-0 {
+        padding: 0;
+    }
+
+    /* Forms */
+    .form-control {
+        font-size: 16px; /* Prevents auto zoom-in on iOS Safari */
+    }
+
+    .form-actions {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .form-actions .btn {
+        width: 100%;
+        min-height: 44px;
+    }
+
+    /* Tables & Responsive Touch Scrolling */
+    .table-responsive {
+        border-radius: 0 0 var(--radius) var(--radius);
+        -webkit-overflow-scrolling: touch;
+        position: relative;
+    }
+
+    .data-table {
+        min-width: 580px;
+    }
+
+    .data-table th,
+    .data-table td {
+        padding: 0.65rem 0.75rem;
+        font-size: 0.825rem;
+    }
+
+    .table-actions {
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        min-width: 140px;
+    }
+
+    .table-actions .btn {
+        min-height: 32px;
+        padding: 0.35rem 0.55rem;
+        font-size: 0.75rem;
+    }
+
+    /* Details Grid */
+    .details-grid {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+    }
+
+    .code-box {
+        font-size: 0.75rem;
+        padding: 0.75rem;
+        max-height: 320px;
+        word-break: break-all;
+    }
+
+    /* Modals */
+    .modal {
+        padding: 0.75rem;
+    }
+
+    .modal-dialog {
+        width: 95%;
+        max-width: 440px;
+        margin: 0 auto;
+        max-height: 90vh;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .modal-body {
+        overflow-y: auto;
+        max-height: calc(90vh - 120px);
+    }
+
+    /* Footer */
+    .footer-container {
+        flex-direction: column;
+        text-align: center;
+        gap: 0.5rem;
+    }
+
+    .footer-container .separator {
+        display: none;
+    }
+}
+
+/* ==========================================================================
+   Small Mobile Devices (Up to 480px)
+   ========================================================================== */
+
+@media (max-width: 480px) {
+    .header-brand {
+        gap: 0.5rem;
+    }
+
+    .brand-title {
+        font-size: 1.05rem;
+    }
+
+    .badge-server {
+        font-size: 0.7rem;
+        padding: 0.15rem 0.35rem;
+    }
+
+    .page-actions .btn,
+    .page-actions form {
+        flex: 1 1 100%;
+    }
+
+    .stats-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 0.5rem;
+    }
+
+    .stat-card {
+        padding: 0.75rem 0.65rem;
+    }
+
+    .stat-value {
+        font-size: 1.15rem;
+    }
+
+    .qr-container {
+        padding: 0.5rem;
+    }
+
+    .qr-img {
+        max-width: 180px;
+    }
+}
+
+@keyframes navSlideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
